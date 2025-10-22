@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MeesterCRM</title>
+    <title>MeesterCRM — Freelance cockpit</title>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -12,418 +12,438 @@
     <link rel="stylesheet" href="styles/style.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
-    <script type="module" src="scripts/app.js" defer></script>
   </head>
   <body>
-    <div class="app">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand-logo">M</div>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="branding">
+          <div class="logo">M</div>
           <div>
             <h1>MeesterCRM</h1>
-            <p>Je freelance cockpit met Supabase-integratie</p>
+            <p>Alles-in-één cockpit voor jouw freelance bedrijf</p>
           </div>
         </div>
-        <div class="topbar-actions">
-          <div class="status-group">
-            <span id="connection-status" class="badge badge-danger">Niet verbonden</span>
-            <span id="user-status" class="badge badge-muted hidden"></span>
+        <div class="header-actions">
+          <div class="connection-group">
+            <span id="connection-indicator" class="status-badge status-badge--danger"
+              >Niet verbonden</span
+            >
+            <button id="open-supabase-settings" class="ghost-button">
+              Supabase instellen
+            </button>
           </div>
-          <button id="open-settings" class="ghost-button">Supabase</button>
-          <button id="refresh-button" class="primary-button">Verversen</button>
-          <button id="logout-button" class="ghost-button hidden">Uitloggen</button>
+          <button id="refresh-data" class="primary-button primary-button--outline">
+            Gegevens verversen
+          </button>
         </div>
       </header>
 
-      <div class="layout">
-        <aside class="sidebar">
-          <nav class="nav">
-            <button class="nav-button active" data-view="dashboard">Dashboard</button>
-            <button class="nav-button" data-view="clients">Klanten</button>
-            <button class="nav-button" data-view="time">Uren</button>
-            <button class="nav-button" data-view="planning">Planning</button>
-            <button class="nav-button" data-view="invoicing">Facturatie</button>
-            <button class="nav-button" data-view="tasks">Taken</button>
-          </nav>
-        </aside>
+      <nav class="app-nav" aria-label="Hoofd navigatie">
+        <button class="nav-button active" data-target="dashboard">Dashboard</button>
+        <button class="nav-button" data-target="clients">Klanten</button>
+        <button class="nav-button" data-target="time-tracking">Urenregistratie</button>
+        <button class="nav-button" data-target="planning">Planning</button>
+        <button class="nav-button" data-target="invoicing">Facturatie</button>
+        <button class="nav-button" data-target="tasks">Taken</button>
+      </nav>
 
-        <main class="views">
-          <section id="dashboard" class="view active" aria-labelledby="dashboard-title">
-            <header class="view-header">
-              <div>
-                <h2 id="dashboard-title">Overzicht</h2>
-                <p class="subtitle">In één oogopslag inzicht in omzet, uren en focus</p>
-              </div>
+      <main class="app-main">
+        <section id="dashboard" class="view active" aria-labelledby="dashboard-title">
+          <header class="view-header">
+            <div>
+              <h2 id="dashboard-title">Overzicht</h2>
+              <p class="subtitle">In één oogopslag inzicht in omzet, uren en workload</p>
+            </div>
+            <div class="view-toolbar">
               <label class="inline-filter">
                 <span>Periode</span>
-                <select id="dashboard-range">
-                  <option value="30">30 dagen</option>
-                  <option value="90">90 dagen</option>
-                  <option value="365">12 maanden</option>
+                <select id="dashboard-period">
+                  <option value="30">Laatste 30 dagen</option>
+                  <option value="90">Laatste 90 dagen</option>
+                  <option value="365">Laatste 12 maanden</option>
                 </select>
               </label>
-            </header>
-            <div class="metrics-grid">
-              <article class="metric">
-                <header>
-                  <span>Omzet</span>
-                  <span id="metric-revenue-delta" class="metric-delta">—</span>
-                </header>
-                <div id="metric-revenue" class="metric-value">€ 0,00</div>
-                <footer id="metric-revenue-range">Laatste 30 dagen</footer>
-              </article>
-              <article class="metric">
-                <header>
-                  <span>Gewerkte uren</span>
-                  <span id="metric-hours-delta" class="metric-delta">—</span>
-                </header>
-                <div id="metric-hours" class="metric-value">0:00</div>
-                <footer id="metric-hours-range">Laatste 30 dagen</footer>
-              </article>
-              <article class="metric">
-                <header><span>Openstaande facturen</span></header>
-                <div id="metric-open-invoices" class="metric-value">€ 0,00</div>
-                <footer id="metric-open-count">0 facturen</footer>
-              </article>
-              <article class="metric">
-                <header><span>Prioriteit</span></header>
-                <div id="metric-priority" class="metric-value">0 taken</div>
-                <footer>Met hoge prioriteit deze week</footer>
-              </article>
             </div>
+          </header>
+
+          <div class="dashboard-grid">
+            <article class="metric-card">
+              <header>
+                <span class="metric-label">Omzet</span>
+                <span class="metric-trend" id="revenue-trend">—</span>
+              </header>
+              <div class="metric-value" id="total-revenue">€ 0,00</div>
+              <footer>
+                <span id="revenue-period-label">Laatste 30 dagen</span>
+              </footer>
+            </article>
+            <article class="metric-card">
+              <header>
+                <span class="metric-label">Gewerkte uren</span>
+                <span class="metric-trend" id="hours-trend">—</span>
+              </header>
+              <div class="metric-value" id="total-hours">0:00</div>
+              <footer>
+                <span id="hours-period-label">Laatste 30 dagen</span>
+              </footer>
+            </article>
+            <article class="metric-card">
+              <header>
+                <span class="metric-label">Openstaande facturen</span>
+              </header>
+              <div class="metric-value" id="open-invoices">€ 0,00</div>
+              <footer>
+                <span id="open-invoices-count">0 facturen</span>
+              </footer>
+            </article>
+            <article class="metric-card">
+              <header>
+                <span class="metric-label">Focus</span>
+              </header>
+              <div class="metric-value" id="priority-tasks">0 taken</div>
+              <footer>Met hoge prioriteit voor deze week</footer>
+            </article>
+          </div>
+
+          <div class="dashboard-panels">
             <section class="panel">
               <header class="panel-header">
-                <h3>Omzet & uren</h3>
-                <button id="toggle-chart" class="ghost-button">Toon uren</button>
+                <h3>Omzet en uren</h3>
+                <div class="panel-actions">
+                  <button class="ghost-button" id="toggle-chart-view">Wissel grafiek</button>
+                </div>
               </header>
-              <canvas id="performance-chart" height="240" aria-label="Grafiek omzet en uren"></canvas>
+              <canvas id="performance-chart" height="220" aria-label="Grafiek omzet en uren"></canvas>
             </section>
-            <div class="panel-grid">
-              <section class="panel">
-                <header class="panel-header">
-                  <h3>Aankomende afspraken</h3>
-                </header>
-                <ul id="dashboard-events" class="list"></ul>
-              </section>
-              <section class="panel">
-                <header class="panel-header">
-                  <h3>Belangrijke taken</h3>
-                </header>
-                <ul id="dashboard-tasks" class="list"></ul>
-              </section>
-            </div>
-          </section>
-
-          <section id="clients" class="view" aria-labelledby="clients-title">
-            <header class="view-header">
-              <div>
-                <h2 id="clients-title">Klantenbeheer</h2>
-                <p class="subtitle">Beheer contactgegevens en uurtarieven</p>
-              </div>
-              <div class="view-actions">
-                <input id="client-search" type="search" placeholder="Zoek klant" />
-                <button id="add-client" class="primary-button">Nieuwe klant</button>
-              </div>
-            </header>
             <section class="panel">
-              <div class="table-wrapper">
-                <table aria-describedby="clients-title">
-                  <thead>
-                    <tr>
-                      <th>Naam</th>
-                      <th>Contact</th>
-                      <th>Uurtarief</th>
-                      <th>Laatst gewerkt</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="clients-table"></tbody>
-                </table>
-              </div>
-              <div id="clients-empty" class="empty-state hidden">
-                <h3>Nog geen klanten</h3>
-                <p>Voeg je eerste klant toe om te starten met uren schrijven en factureren.</p>
-                <button id="empty-add-client" class="primary-button">Klant toevoegen</button>
+              <header class="panel-header">
+                <h3>Deze week</h3>
+              </header>
+              <div class="split-panel">
+                <div>
+                  <h4>Planning</h4>
+                  <ul id="upcoming-events" class="list"></ul>
+                </div>
+                <div>
+                  <h4>Belangrijkste taken</h4>
+                  <ul id="critical-tasks" class="list"></ul>
+                </div>
               </div>
             </section>
-          </section>
+          </div>
+        </section>
 
-          <section id="time" class="view" aria-labelledby="time-title">
-            <header class="view-header">
-              <div>
-                <h2 id="time-title">Urenregistratie</h2>
-                <p class="subtitle">Track live of voer handmatig in</p>
-              </div>
+        <section id="clients" class="view" aria-labelledby="clients-title">
+          <header class="view-header">
+            <div>
+              <h2 id="clients-title">Klantenbeheer</h2>
+              <p class="subtitle">Beheer klantgegevens, tarieven en contactinformatie</p>
+            </div>
+            <div class="view-toolbar">
+              <input id="client-search" type="search" placeholder="Zoek klant" />
+              <button id="add-client" class="primary-button">Nieuwe klant</button>
+            </div>
+          </header>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Naam</th>
+                  <th>Contact</th>
+                  <th>Uurtarief</th>
+                  <th>Laatst gewerkt</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="clients-table"></tbody>
+            </table>
+            <div class="empty-state hidden" id="clients-empty">
+              <h3>Voeg je eerste klant toe</h3>
+              <p>Met klanten kun je uren schrijven, plannen en factureren.</p>
+              <button id="empty-add-client" class="primary-button">Klant toevoegen</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="time-tracking" class="view" aria-labelledby="time-title">
+          <header class="view-header">
+            <div>
+              <h2 id="time-title">Urenregistratie</h2>
+              <p class="subtitle">Registreer je uren tot op de seconde en houd overzicht</p>
+            </div>
+            <div class="view-toolbar">
               <label class="inline-filter">
-                <span>Week</span>
+                <span>Periode</span>
                 <input type="week" id="time-week" />
               </label>
-            </header>
-            <div class="panel-grid">
-              <section class="panel">
-                <header class="panel-header">
-                  <h3>Live timer</h3>
-                </header>
-                <div class="timer">
-                  <div id="timer-display" class="timer-display">00:00:00</div>
-                  <div class="timer-fields">
-                    <label>
-                      <span>Klant</span>
-                      <select id="timer-client"></select>
-                    </label>
-                    <label>
-                      <span>Omschrijving</span>
-                      <input id="timer-description" type="text" placeholder="Bijv. ontwerp homepage" />
-                    </label>
-                  </div>
-                  <div class="timer-actions">
-                    <button id="start-timer" type="button" class="primary-button">Start</button>
-                    <button id="stop-timer" type="button" class="primary-button" disabled>Stop</button>
-                    <button id="reset-timer" type="button" class="ghost-button" disabled>Reset</button>
-                  </div>
-                  <p id="timer-feedback" class="muted hidden"></p>
-                </div>
-              </section>
-              <section class="panel">
-                <header class="panel-header">
-                  <h3>Handmatig registreren</h3>
-                </header>
-                <form id="manual-time-form" class="form-grid">
-                  <label>
-                    <span>Klant</span>
-                    <select id="manual-client"></select>
-                  </label>
-                  <label>
-                    <span>Start</span>
-                    <input type="datetime-local" id="manual-start" />
-                  </label>
-                  <label>
-                    <span>Einde</span>
-                    <input type="datetime-local" id="manual-end" />
-                  </label>
-                  <label class="full">
-                    <span>Notitie</span>
-                    <input type="text" id="manual-description" />
-                  </label>
-                  <button type="submit" class="primary-button full">Opslaan</button>
-                </form>
-              </section>
             </div>
-            <section class="panel">
-              <header class="panel-header">
-                <h3>Geregistreerde uren</h3>
-                <div class="panel-actions">
-                  <button id="export-week" class="ghost-button">Exporteren (CSV)</button>
-                </div>
-              </header>
-              <div class="table-wrapper">
-                <table aria-describedby="time-title">
-                  <thead>
-                    <tr>
-                      <th>Datum</th>
-                      <th>Klant</th>
-                      <th>Notitie</th>
-                      <th>Duur</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="time-table"></tbody>
-                </table>
-              </div>
-              <div id="time-empty" class="empty-state hidden">
-                <h3>Nog geen uren</h3>
-                <p>Start de timer of registreer uren handmatig.</p>
-              </div>
-            </section>
-          </section>
+          </header>
 
-          <section id="planning" class="view" aria-labelledby="planning-title">
-            <header class="view-header">
-              <div>
-                <h2 id="planning-title">Planning</h2>
-                <p class="subtitle">Plan je week en importeer uit je agenda</p>
-              </div>
-              <div class="view-actions">
-                <button id="previous-week" class="ghost-button">Vorige</button>
-                <span id="week-label" class="week-label"></span>
-                <button id="next-week" class="ghost-button">Volgende</button>
-              </div>
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Live timer</h3>
             </header>
-            <section class="panel">
-              <header class="panel-header">
-                <h3>Nieuw agendaitem</h3>
-              </header>
-              <form id="planning-form" class="form-grid">
-                <label class="full">
-                  <span>Titel</span>
-                  <input type="text" id="planning-title-input" />
-                </label>
+            <div class="timer">
+              <div class="timer-display" id="timer-display">00:00:00</div>
+              <form id="timer-form" class="timer-form">
                 <label>
                   <span>Klant</span>
-                  <select id="planning-client"></select>
+                  <select id="timer-client"></select>
                 </label>
                 <label>
-                  <span>Start</span>
-                  <input type="datetime-local" id="planning-start" />
+                  <span>Omschrijving</span>
+                  <input type="text" id="timer-description" placeholder="Bijv. ontwerp homepage" />
                 </label>
-                <label>
-                  <span>Einde</span>
-                  <input type="datetime-local" id="planning-end" />
-                </label>
-                <label>
-                  <span>Locatie</span>
-                  <input type="text" id="planning-location" />
-                </label>
-                <label>
-                  <span>Link</span>
-                  <input type="url" id="planning-link" />
-                </label>
-                <div class="form-actions full">
-                  <button type="submit" class="primary-button">Opslaan</button>
-                  <label class="ghost-button file-button">
-                    <input id="import-ics" type="file" accept=".ics" hidden />
-                    <span>Importeer ICS</span>
-                  </label>
-                  <button id="export-ics" type="button" class="ghost-button">Exporteer ICS</button>
+                <div class="timer-actions">
+                  <button type="button" id="start-timer" class="primary-button">Start</button>
+                  <button type="button" id="stop-timer" class="primary-button" disabled>Stop</button>
+                  <button type="button" id="reset-timer" class="ghost-button" disabled>Reset</button>
                 </div>
               </form>
-            </section>
-            <section class="panel">
-              <div id="planning-grid" class="week-grid"></div>
-            </section>
+              <div class="timer-summary hidden" id="timer-summary"></div>
+            </div>
           </section>
 
-          <section id="invoicing" class="view" aria-labelledby="invoicing-title">
-            <header class="view-header">
-              <div>
-                <h2 id="invoicing-title">Facturatie</h2>
-                <p class="subtitle">Maak facturen, exporteer PDF en verstuur per mail</p>
-              </div>
-              <div class="view-actions">
-                <select id="invoice-filter">
-                  <option value="all">Alle facturen</option>
-                  <option value="open">Openstaand</option>
-                  <option value="paid">Betaald</option>
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Handmatige boeking</h3>
+            </header>
+            <form id="manual-time-form" class="form-grid">
+              <label>
+                <span>Klant</span>
+                <select id="manual-client"></select>
+              </label>
+              <label>
+                <span>Starttijd</span>
+                <input type="datetime-local" id="manual-start" required />
+              </label>
+              <label>
+                <span>Eindtijd</span>
+                <input type="datetime-local" id="manual-end" required />
+              </label>
+              <label>
+                <span>Omschrijving</span>
+                <input type="text" id="manual-description" placeholder="Wat heb je gedaan?" />
+              </label>
+              <label>
+                <span>Billable</span>
+                <select id="manual-billable">
+                  <option value="true">Ja</option>
+                  <option value="false">Nee</option>
                 </select>
-                <button id="new-invoice" class="primary-button">Nieuwe factuur</button>
+              </label>
+              <label>
+                <span>Uurtarief (optioneel)</span>
+                <input type="number" id="manual-rate" step="0.01" min="0" />
+              </label>
+              <div class="form-actions full-row">
+                <button type="submit" class="primary-button">Boeking opslaan</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Uren deze week</h3>
+              <div class="panel-actions">
+                <button id="export-week-csv" class="ghost-button">Exporteer CSV</button>
               </div>
             </header>
-            <section class="panel">
-              <div class="table-wrapper">
-                <table aria-describedby="invoicing-title">
-                  <thead>
-                    <tr>
-                      <th>Nummer</th>
-                      <th>Klant</th>
-                      <th>Factuurdatum</th>
-                      <th>Vervaldatum</th>
-                      <th>Bedrag (incl. btw)</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="invoice-table"></tbody>
-                </table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Klant</th>
+                  <th>Omschrijving</th>
+                  <th>Duur</th>
+                  <th>Billable</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="time-entries"></tbody>
+            </table>
+            <div class="empty-state hidden" id="time-empty">
+              <h3>Nog geen uren</h3>
+              <p>Start de timer of voeg handmatig een boeking toe.</p>
+            </div>
+          </section>
+        </section>
+
+        <section id="planning" class="view" aria-labelledby="planning-title">
+          <header class="view-header">
+            <div>
+              <h2 id="planning-title">Weekplanning</h2>
+              <p class="subtitle">Plan je werkweek en synchroniseer met je agenda</p>
+            </div>
+            <div class="view-toolbar">
+              <button id="previous-week" class="ghost-button">Vorige week</button>
+              <div id="current-week-label" class="week-label"></div>
+              <button id="next-week" class="ghost-button">Volgende week</button>
+            </div>
+          </header>
+
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Nieuwe planning</h3>
+            </header>
+            <form id="planning-form" class="form-grid">
+              <label>
+                <span>Titel</span>
+                <input type="text" id="planning-title-input" required />
+              </label>
+              <label>
+                <span>Start</span>
+                <input type="datetime-local" id="planning-start" required />
+              </label>
+              <label>
+                <span>Einde</span>
+                <input type="datetime-local" id="planning-end" required />
+              </label>
+              <label>
+                <span>Locatie</span>
+                <input type="text" id="planning-location" placeholder="Online / kantoor" />
+              </label>
+              <label>
+                <span>Notities of link</span>
+                <input type="url" id="planning-link" placeholder="https://meeting-link" />
+              </label>
+              <label class="full-row">
+                <span>Beschrijving</span>
+                <textarea id="planning-notes" rows="2"></textarea>
+              </label>
+              <div class="form-actions full-row">
+                <button type="submit" class="primary-button">Planning toevoegen</button>
+                <button type="button" id="export-week-ics" class="ghost-button">
+                  Exporteer naar agenda (ICS)
+                </button>
+                <label class="ghost-button file-input">
+                  <input type="file" id="import-ics" accept=".ics,text/calendar" hidden />
+                  <span>Importeer agenda</span>
+                </label>
               </div>
-              <div id="invoice-empty" class="empty-state hidden">
-                <h3>Nog geen facturen</h3>
-                <p>Start met factureren op basis van je geregistreerde uren.</p>
-                <button id="empty-new-invoice" class="primary-button">Factuur maken</button>
-              </div>
-            </section>
+            </form>
           </section>
 
-          <section id="tasks" class="view" aria-labelledby="tasks-title">
-            <header class="view-header">
-              <div>
-                <h2 id="tasks-title">Taken</h2>
-                <p class="subtitle">Beheer deadlines en prioriteiten</p>
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Weekoverzicht</h3>
+            </header>
+            <div class="week-grid" id="week-grid" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <section id="invoicing" class="view" aria-labelledby="invoicing-title">
+          <header class="view-header">
+            <div>
+              <h2 id="invoicing-title">Facturatie</h2>
+              <p class="subtitle">
+                Bouw facturen vanuit je urenregistratie, genereer een PDF en verstuur per mail
+              </p>
+            </div>
+            <div class="view-toolbar">
+              <button id="new-invoice" class="primary-button">Nieuwe factuur</button>
+            </div>
+          </header>
+
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Facturen</h3>
+              <div class="panel-actions">
+                <label class="inline-filter">
+                  <span>Status</span>
+                  <select id="invoice-status-filter">
+                    <option value="all">Alle</option>
+                    <option value="concept">Concept</option>
+                    <option value="verzonden">Verzonden</option>
+                    <option value="betaald">Betaald</option>
+                    <option value="vervallen">Vervallen</option>
+                  </select>
+                </label>
               </div>
-              <div class="view-actions">
-                <select id="task-complete-filter">
-                  <option value="all">Alle taken</option>
-                  <option value="open">Openstaand</option>
+            </header>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Factuurnummer</th>
+                    <th>Klant</th>
+                    <th>Verstuurd</th>
+                    <th>Vervaldatum</th>
+                    <th>Bedrag</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="invoice-table"></tbody>
+              </table>
+              <div class="empty-state hidden" id="invoice-empty">
+                <h3>Geen facturen gevonden</h3>
+                <p>Maak je eerste factuur aan vanuit urenregistraties of handmatige regels.</p>
+                <button class="primary-button" id="empty-new-invoice">Nieuwe factuur</button>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="tasks" class="view" aria-labelledby="tasks-title">
+          <header class="view-header">
+            <div>
+              <h2 id="tasks-title">Takenlijst</h2>
+              <p class="subtitle">Prioriteer je acties met deadlines en statusupdates</p>
+            </div>
+            <div class="view-toolbar">
+              <label class="inline-filter">
+                <span>Status</span>
+                <select id="task-status-filter">
+                  <option value="open">Open</option>
+                  <option value="in_behandeling">In behandeling</option>
                   <option value="done">Afgerond</option>
+                  <option value="all">Alles</option>
                 </select>
+              </label>
+              <label class="inline-filter">
+                <span>Prioriteit</span>
                 <select id="task-priority-filter">
-                  <option value="all">Alle prioriteiten</option>
-                  <option value="1">Hoog</option>
-                  <option value="2">Normaal</option>
-                  <option value="3">Laag</option>
+                  <option value="all">Alle</option>
+                  <option value="high">Hoog</option>
+                  <option value="medium">Middel</option>
+                  <option value="low">Laag</option>
                 </select>
-                <button id="add-task" class="primary-button">Nieuwe taak</button>
-              </div>
-            </header>
-            <section class="panel">
-              <div class="table-wrapper">
-                <table aria-describedby="tasks-title">
-                  <thead>
-                    <tr>
-                      <th>Taak</th>
-                      <th>Deadline</th>
-                      <th>Prioriteit</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="task-table"></tbody>
-                </table>
-              </div>
-              <div id="tasks-empty" class="empty-state hidden">
-                <h3>Geen taken gevonden</h3>
-                <p>Maak taken aan om gefocust te blijven op je werk.</p>
-                <button id="empty-add-task" class="primary-button">Taak toevoegen</button>
-              </div>
-            </section>
-          </section>
-        </main>
-      </div>
+              </label>
+              <button id="add-task" class="primary-button">Nieuwe taak</button>
+            </div>
+          </header>
+
+          <div class="task-board" id="task-board"></div>
+          <div class="empty-state hidden" id="tasks-empty">
+            <h3>Je bent bij!</h3>
+            <p>Voeg een taak toe om niets te vergeten.</p>
+            <button class="primary-button" id="empty-add-task">Taak toevoegen</button>
+          </div>
+        </section>
+      </main>
     </div>
 
-    <div id="modal-backdrop" class="backdrop hidden"></div>
+    <div id="modal-backdrop" class="modal-backdrop hidden"></div>
 
-    <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
-      <form id="settings-form" class="modal-content">
+    <div id="supabase-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <form id="supabase-form" class="modal-content">
         <header>
-          <h3>Supabase instellingen</h3>
-          <p class="subtitle">Vul je project URL en sleutel (anon/public) in</p>
+          <h3>Verbind met Supabase</h3>
+          <p>Bewaar je gegevens veilig in Supabase. Vul je projectgegevens in.</p>
         </header>
         <label>
-          <span>Project URL</span>
+          <span>Supabase URL</span>
           <input type="url" id="supabase-url" placeholder="https://xyzcompany.supabase.co" required />
         </label>
         <label>
-          <span>Anon sleutel</span>
-          <input type="password" id="supabase-key" placeholder="xxx" required />
+          <span>Anon public key</span>
+          <input type="text" id="supabase-key" placeholder="public-anon-key" required />
         </label>
-        <div class="form-actions">
-          <button type="submit" class="primary-button">Verbinden</button>
-          <button type="button" id="clear-settings" class="ghost-button">Reset</button>
-          <button type="button" data-close class="ghost-button">Sluiten</button>
-        </div>
-      </form>
-    </div>
-
-    <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true">
-      <form id="auth-form" class="modal-content">
-        <header>
-          <h3>Inloggen</h3>
-          <p class="subtitle">Gebruik de Supabase gebruiker voor dit dashboard</p>
-        </header>
-        <label>
-          <span>E-mail</span>
-          <input type="email" id="auth-email" required />
-        </label>
-        <label>
-          <span>Wachtwoord</span>
-          <input type="password" id="auth-password" required />
-        </label>
-        <div class="form-actions">
-          <button type="submit" class="primary-button" id="auth-submit">Inloggen</button>
-          <button type="button" id="auth-toggle" class="ghost-button">Nog geen account?</button>
-          <button type="button" data-close class="ghost-button">Annuleren</button>
-        </div>
-        <p id="auth-message" class="muted"></p>
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" id="cancel-supabase">Annuleer</button>
+          <button type="submit" class="primary-button">Opslaan</button>
+        </footer>
       </form>
     </div>
 
@@ -431,7 +451,6 @@
       <form id="client-form" class="modal-content">
         <header>
           <h3 id="client-modal-title">Nieuwe klant</h3>
-          <p class="subtitle">Vul de klantgegevens in</p>
         </header>
         <input type="hidden" id="client-id" />
         <label>
@@ -439,103 +458,119 @@
           <input type="text" id="client-name" required />
         </label>
         <label>
-          <span>E-mail</span>
-          <input type="email" id="client-email" />
+          <span>Contactpersoon</span>
+          <input type="text" id="client-contact" placeholder="Naam contactpersoon" />
+        </label>
+        <label>
+          <span>Email</span>
+          <input type="email" id="client-email" placeholder="naam@bedrijf.nl" />
         </label>
         <label>
           <span>Telefoon</span>
-          <input type="tel" id="client-phone" />
+          <input type="tel" id="client-phone" placeholder="06 12345678" />
         </label>
         <label>
-          <span>Uurtarief</span>
-          <input type="number" id="client-rate" min="0" step="0.01" />
+          <span>Adres</span>
+          <textarea id="client-address" rows="2" placeholder="Adres voor facturen"></textarea>
         </label>
-        <label class="full">
+        <label>
+          <span>Standaard uurtarief (€)</span>
+          <input type="number" id="client-rate" step="0.01" min="0" />
+        </label>
+        <label class="full-row">
           <span>Notities</span>
-          <textarea id="client-notes" rows="2"></textarea>
+          <textarea id="client-notes" rows="3"></textarea>
         </label>
-        <div class="form-actions">
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" id="cancel-client">Annuleer</button>
           <button type="submit" class="primary-button">Opslaan</button>
-          <button type="button" data-close class="ghost-button">Annuleren</button>
-        </div>
+        </footer>
       </form>
     </div>
 
     <div id="invoice-modal" class="modal hidden" role="dialog" aria-modal="true">
-      <form id="invoice-form" class="modal-content">
+      <form id="invoice-form" class="modal-content large">
         <header>
           <h3 id="invoice-modal-title">Nieuwe factuur</h3>
-          <p class="subtitle">Vul de factuurgegevens in en voeg regels toe</p>
         </header>
         <input type="hidden" id="invoice-id" />
-        <label>
-          <span>Klant</span>
-          <select id="invoice-client" required></select>
-        </label>
-        <label>
-          <span>Factuurnummer</span>
-          <input type="text" id="invoice-number" required />
-        </label>
-        <label>
-          <span>Factuurdatum</span>
-          <input type="date" id="invoice-issue" required />
-        </label>
-        <label>
-          <span>Vervaldatum</span>
-          <input type="date" id="invoice-due" />
-        </label>
-        <label>
-          <span>BTW %</span>
-          <input type="number" id="invoice-vat" min="0" step="0.1" />
-        </label>
-        <label class="checkbox">
-          <input type="checkbox" id="invoice-paid" />
-          <span>Factuur is betaald</span>
-        </label>
+        <div class="form-grid">
+          <label>
+            <span>Klant</span>
+            <select id="invoice-client" required></select>
+          </label>
+          <label>
+            <span>Factuurnummer</span>
+            <input type="text" id="invoice-number" required />
+          </label>
+          <label>
+            <span>Factuurdatum</span>
+            <input type="date" id="invoice-issue-date" required />
+          </label>
+          <label>
+            <span>Vervaldatum</span>
+            <input type="date" id="invoice-due-date" required />
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="invoice-status">
+              <option value="concept">Concept</option>
+              <option value="verzonden">Verzonden</option>
+              <option value="betaald">Betaald</option>
+              <option value="vervallen">Vervallen</option>
+            </select>
+          </label>
+          <label>
+            <span>Opmerkingen op factuur</span>
+            <textarea id="invoice-notes" rows="2" placeholder="Bijv. betaaltermijn 14 dagen"></textarea>
+          </label>
+        </div>
+
         <section class="line-items">
           <header>
             <h4>Factuurregels</h4>
-            <div class="line-items-actions">
-              <button id="load-time-entries" type="button" class="ghost-button">Uren laden</button>
-              <button id="add-line-item" type="button" class="ghost-button">Regel toevoegen</button>
+            <div class="panel-actions">
+              <button type="button" id="add-line-item" class="ghost-button">Regel toevoegen</button>
+              <button type="button" id="load-time-entries" class="ghost-button">Uren ophalen</button>
             </div>
           </header>
           <div id="line-items-container"></div>
-          <footer class="line-items-summary">
-            <span>Totaal</span>
+          <div class="invoice-summary">
+            <span>Totaal excl. btw</span>
             <strong id="invoice-total">€ 0,00</strong>
-          </footer>
+          </div>
         </section>
-        <div class="form-actions">
+
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" id="cancel-invoice">Annuleer</button>
           <button type="submit" class="primary-button">Factuur opslaan</button>
-          <button type="button" data-close class="ghost-button">Annuleren</button>
-        </div>
+        </footer>
       </form>
     </div>
 
     <div id="invoice-email-modal" class="modal hidden" role="dialog" aria-modal="true">
       <form id="invoice-email-form" class="modal-content">
         <header>
-          <h3>Factuur mailen</h3>
-          <p class="subtitle">Verstuur rechtstreeks via de Supabase Edge Function</p>
+          <h3>Factuur versturen</h3>
+          <p>We sturen een mail via je Supabase Edge Function. Voeg een persoonlijk bericht toe.</p>
         </header>
         <input type="hidden" id="email-invoice-id" />
         <label>
           <span>Ontvanger</span>
-          <input type="email" id="email-recipient" required />
+          <input type="email" id="email-recipient" placeholder="facturen@klant.nl" required />
         </label>
         <label>
           <span>Onderwerp</span>
           <input type="text" id="email-subject" />
         </label>
-        <label class="full">
+        <label>
           <span>Bericht</span>
-          <textarea id="email-body" rows="4"></textarea>
+          <textarea id="email-message" rows="4"></textarea>
         </label>
-        <div class="form-actions">
-          <button type="submit" class="primary-button">Versturen</button>
-          <button type="button" data-close class="ghost-button">Annuleren</button>
-        </div>
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" id="cancel-email">Annuleer</button>
+          <button type="submit" class="primary-button">Verstuur</button>
+        </footer>
       </form>
     </div>
 
@@ -543,12 +578,15 @@
       <form id="task-form" class="modal-content">
         <header>
           <h3 id="task-modal-title">Nieuwe taak</h3>
-          <p class="subtitle">Beheer je werk en deadlines</p>
         </header>
         <input type="hidden" id="task-id" />
         <label>
           <span>Titel</span>
           <input type="text" id="task-title" required />
+        </label>
+        <label>
+          <span>Omschrijving</span>
+          <textarea id="task-description" rows="3"></textarea>
         </label>
         <label>
           <span>Deadline</span>
@@ -557,40 +595,45 @@
         <label>
           <span>Prioriteit</span>
           <select id="task-priority">
-            <option value="1">Hoog</option>
-            <option value="2">Normaal</option>
-            <option value="3">Laag</option>
+            <option value="high">Hoog</option>
+            <option value="medium">Middel</option>
+            <option value="low">Laag</option>
           </select>
         </label>
-        <label class="checkbox">
-          <input type="checkbox" id="task-done" />
-          <span>Markeer als afgerond</span>
+        <label>
+          <span>Status</span>
+          <select id="task-status">
+            <option value="open">Open</option>
+            <option value="in_behandeling">In behandeling</option>
+            <option value="done">Afgerond</option>
+          </select>
         </label>
-        <div class="form-actions">
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" id="cancel-task">Annuleer</button>
           <button type="submit" class="primary-button">Opslaan</button>
-          <button type="button" data-close class="ghost-button">Annuleren</button>
-        </div>
+        </footer>
       </form>
     </div>
 
     <div id="drawer" class="drawer hidden" role="dialog" aria-modal="true">
-      <form id="drawer-form" class="drawer-content">
+      <div class="drawer-content">
         <header>
-          <h3>Beschikbare uren</h3>
-          <p class="subtitle">Selecteer uren om als factuurregel toe te voegen</p>
+          <h3>Uren toevoegen aan factuur</h3>
         </header>
-        <div class="drawer-filters">
+        <form id="drawer-filter" class="form-grid">
           <label>
-            <span>Vanaf</span>
+            <span>Periode start</span>
             <input type="date" id="drawer-start" />
           </label>
           <label>
-            <span>Tot</span>
+            <span>Periode einde</span>
             <input type="date" id="drawer-end" />
           </label>
-          <button type="submit" class="ghost-button">Filter</button>
-        </div>
-        <div class="table-wrapper">
+          <div class="form-actions full-row">
+            <button type="submit" class="primary-button">Zoeken</button>
+          </div>
+        </form>
+        <div class="drawer-body">
           <table>
             <thead>
               <tr>
@@ -600,15 +643,36 @@
                 <th>Duur</th>
               </tr>
             </thead>
-            <tbody id="drawer-table"></tbody>
+            <tbody id="drawer-time-entries"></tbody>
           </table>
         </div>
-        <div class="form-actions">
-          <button type="button" id="add-selected-time" class="primary-button">Voeg toe</button>
-          <button type="button" data-close class="ghost-button">Sluiten</button>
-        </div>
-      </form>
+        <footer class="drawer-actions">
+          <button type="button" class="ghost-button" id="close-drawer">Sluiten</button>
+          <button type="button" class="primary-button" id="add-selected-time">Toevoegen</button>
+        </footer>
+      </div>
     </div>
+
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <template id="task-card-template">
+      <article class="task-card">
+        <header>
+          <h4></h4>
+          <span class="badge"></span>
+        </header>
+        <p class="description"></p>
+        <footer>
+          <div class="meta"></div>
+          <div class="actions">
+            <button class="ghost-button" data-action="progress">Markeer als bezig</button>
+            <button class="ghost-button" data-action="complete">Markeer als afgerond</button>
+            <button class="ghost-button" data-action="edit">Wijzig</button>
+            <button class="ghost-button" data-action="delete">Verwijder</button>
+          </div>
+        </footer>
+      </article>
+    </template>
 
     <template id="line-item-template">
       <div class="line-item">
@@ -619,20 +683,20 @@
         </label>
         <label>
           <span>Aantal</span>
-          <input type="number" data-field="quantity" min="0" step="0.01" required />
+          <input type="number" step="0.01" min="0" data-field="quantity" value="1" />
         </label>
         <label>
-          <span>Tarief</span>
-          <input type="number" data-field="unit_price" min="0" step="0.01" required />
+          <span>Tarief (€)</span>
+          <input type="number" step="0.01" min="0" data-field="unit_price" />
         </label>
         <label>
-          <span>Totaal</span>
-          <input type="text" data-field="amount" disabled />
+          <span>Subtotaal</span>
+          <input type="text" data-field="amount" readonly />
         </label>
-        <button type="button" data-action="remove" class="ghost-button">Verwijderen</button>
+        <button type="button" class="ghost-button" data-action="remove">Verwijderen</button>
       </div>
     </template>
 
-    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+    <script type="module" src="scripts/app.js"></script>
   </body>
 </html>

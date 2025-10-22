@@ -19,8 +19,6 @@ interface SendInvoicePayload {
   to: string;
   subject?: string;
   message?: string;
-  pdfBase64: string;
-  filename?: string;
 }
 
 serve(async (req) => {
@@ -30,13 +28,13 @@ serve(async (req) => {
 
   try {
     const payload = (await req.json()) as SendInvoicePayload;
-    if (!payload.invoiceId || !payload.to || !payload.pdfBase64) {
-      return new Response(JSON.stringify({ error: "invoiceId, to and pdfBase64 are required" }), { status: 400 });
+    if (!payload.invoiceId || !payload.to) {
+      return new Response(JSON.stringify({ error: "invoiceId and to are required" }), { status: 400 });
     }
 
     const { data: invoice, error } = await supabase
       .from("invoices")
-      .select("*, client:clients(*)")
+      .select("*, client:clients(*), items:invoice_items(*)")
       .eq("id", payload.invoiceId)
       .single();
 
@@ -45,13 +43,28 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Invoice not found" }), { status: 404 });
     }
 
+    if (!invoice.pdf_path) {
+      return new Response(JSON.stringify({ error: "No PDF uploaded for this invoice" }), {
+        status: 400,
+      });
+    }
+
+    const { data: signed, error: signedError } = await supabase.storage
+      .from("invoices")
+      .createSignedUrl(invoice.pdf_path, 60 * 60 * 24 * 7);
+
+    if (signedError || !signed?.signedUrl) {
+      console.error("Failed to sign URL", signedError);
+      return new Response(JSON.stringify({ error: "Failed to retrieve PDF" }), { status: 500 });
+    }
+
     if (!RESEND_API_KEY) {
       return new Response(JSON.stringify({ error: "RESEND_API_KEY is not configured" }), { status: 500 });
     }
 
-    const subject = payload.subject || `Factuur ${invoice.number}`;
-    const html = buildEmailHtml({ invoice, message: payload.message });
-    const text = buildEmailText({ invoice, message: payload.message });
+    const subject = payload.subject || `Factuur ${invoice.invoice_number}`;
+    const html = buildEmailHtml({ invoice, message: payload.message, signedUrl: signed.signedUrl });
+    const text = buildEmailText({ invoice, message: payload.message, signedUrl: signed.signedUrl });
 
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -65,12 +78,6 @@ serve(async (req) => {
         subject,
         html,
         text,
-        attachments: [
-          {
-            filename: payload.filename || `factuur-${invoice.number}.pdf`,
-            content: payload.pdfBase64,
-          },
-        ],
       }),
     });
 
@@ -82,6 +89,20 @@ serve(async (req) => {
 
     const providerResponse = await emailResponse.json();
 
+    await supabase.from("email_logs").insert({
+      user_id: invoice.user_id,
+      invoice_id: invoice.id,
+      recipient: payload.to,
+      subject,
+      status: "sent",
+      provider_response: providerResponse,
+    });
+
+    await supabase
+      .from("invoices")
+      .update({ status: invoice.status === "betaald" ? invoice.status : "verzonden", sent_at: new Date().toISOString() })
+      .eq("id", invoice.id);
+
     return new Response(JSON.stringify({ success: true, providerResponse }), { status: 200 });
   } catch (err) {
     console.error(err);
@@ -92,21 +113,28 @@ serve(async (req) => {
 function buildEmailHtml({
   invoice,
   message,
+  signedUrl,
 }: {
   invoice: any;
   message?: string;
+  signedUrl: string;
 }) {
   const greeting = message
     ? message.replace(/\n/g, "<br />")
-    : `Beste ${invoice.client?.name || "klant"},<br /><br />In de bijlage vind je factuur ${invoice.number}.`;
+    : `Beste ${invoice.client?.contact_name || invoice.client?.name || "klant"},<br /><br />` +
+      `In de bijlage vind je factuur ${invoice.invoice_number}.`; 
 
   return `
     <div style="font-family: Inter, Arial, sans-serif; color:#0f172a;">
       <p>${greeting}</p>
       <p>
-        <strong>Factuur:</strong> ${invoice.number}<br />
-        <strong>Bedrag:</strong> ${formatCurrency(invoice.total_ex_vat)} exclusief btw<br />
+        <strong>Factuur:</strong> ${invoice.invoice_number}<br />
+        <strong>Bedrag:</strong> ${formatCurrency(invoice.total_amount)}<br />
         <strong>Vervaldatum:</strong> ${invoice.due_date ?? 'n.v.t.'}
+      </p>
+      <p>
+        Download de factuur via de onderstaande link (7 dagen geldig):<br />
+        <a href="${signedUrl}">${signedUrl}</a>
       </p>
       <p>Met vriendelijke groet,<br />MeesterCRM</p>
     </div>
@@ -116,16 +144,21 @@ function buildEmailHtml({
 function buildEmailText({
   invoice,
   message,
+  signedUrl,
 }: {
   invoice: any;
   message?: string;
+  signedUrl: string;
 }) {
   const lines = [
     message ||
-      `Beste ${invoice.client?.name || "klant"},\n\nIn de bijlage vind je factuur ${invoice.number}.`,
-    `Factuur: ${invoice.number}`,
-    `Bedrag: ${formatCurrency(invoice.total_ex_vat)} exclusief btw`,
+      `Beste ${invoice.client?.contact_name || invoice.client?.name || "klant"},\n\nIn de bijlage vind je factuur ${
+        invoice.invoice_number
+      }.`,
+    `Factuur: ${invoice.invoice_number}`,
+    `Bedrag: ${formatCurrency(invoice.total_amount)}`,
     `Vervaldatum: ${invoice.due_date ?? 'n.v.t.'}`,
+    `Download: ${signedUrl}`,
     '\nMet vriendelijke groet,\nMeesterCRM',
   ];
   return lines.join('\n');
