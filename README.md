@@ -5,7 +5,7 @@ Een moderne, Supabase-gedreven cockpit voor zzp'ers om klanten, uren, afspraken,
 ## Hoogtepunten
 
 - **Dashboard** met omzet, uren, openstaande facturen, kritieke taken en interactieve grafieken.
-- **Klantenbeheer** inclusief contactgegevens, notities en standaard uurtarieven.
+- **Klantenbeheer** inclusief contactgegevens, adressen en standaard uurtarieven.
 - **Urenregistratie** met live timer tot op de seconde, handmatige boekingen en CSV-export.
 - **Weekplanning** met agenda-import (ICS) en export zodat je afspraken eenvoudig synchroniseert.
 - **Facturatie** met line-items, urenimport, PDF-generatie via jsPDF en e-mailverzending via een Supabase Edge Function.
@@ -26,17 +26,21 @@ Een moderne, Supabase-gedreven cockpit voor zzp'ers om klanten, uren, afspraken,
 
 Gebruik het SQL-script in [`supabase/schema.sql`](supabase/schema.sql) om alle benodigde tabellen, relaties en policies aan te maken. Je kunt het script rechtstreeks in de Supabase SQL editor uitvoeren.
 
-Het script maakt de volgende tabellen en policies aan:
+De belangrijkste tabellen zijn:
 
-- `profiles`
 - `clients`
 - `time_entries`
-- `planning_events`
+- `planning_entries`
 - `tasks`
 - `invoices`
 - `invoice_items`
+- `email_logs` (voor auditing van verzonden facturen)
 
-Alle tabellen hebben Row Level Security ingeschakeld zodat gebruikers enkel hun eigen data zien (`auth.uid()` wordt overal gekoppeld).
+Het script bevat ook Row Level Security policies waarmee je data per gebruiker kunt afschermen op basis van `auth.uid()`. Als je (nog) geen authenticatie gebruikt kun je de policies naar wens aanpassen.
+
+### Storage bucket
+
+Maak in Supabase een storage bucket met de naam `invoices` en sta `public` uploads toe. De applicatie uploadt factuur-pdf's naar dit bucket en slaat het pad op in de `invoices` tabel.
 
 ### Edge Function voor e-mail
 
@@ -49,7 +53,7 @@ Benodigde environment variabelen voor de functie:
 - `RESEND_API_KEY` (of pas de code aan voor een andere e-mailprovider)
 - `DEFAULT_FROM_EMAIL` (bijv. `Facturatie <facturen@jouwdomein.nl>`)
 
-De frontend genereert de PDF in de browser, encodeert deze als base64 en stuurt die direct mee naar de functie. De Edge Function verstuurt de bijlage via [Resend](https://resend.com/) zonder tussenkomst van Supabase Storage.
+De functie haalt de factuurgegevens en het bijbehorende storage-pad op, maakt een signed URL voor de PDF en verstuurt het e-mailbericht via [Resend](https://resend.com/).
 
 ## Deployen naar GitHub Pages
 

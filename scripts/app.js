@@ -2,18 +2,18 @@ import {
   initSupabase,
   getSupabase,
   resetSupabase,
+  testConnection,
 } from './supabaseClient.js';
 import {
   formatCurrency,
   formatDuration,
   formatDate,
   formatDateTime,
+  getWeekStart,
+  getWeekEnd,
+  formatWeekRange,
   getISODate,
   getISODateTimeLocal,
-  startOfWeek,
-  endOfWeek,
-  addDays,
-  formatWeekRange,
   groupBy,
   sumBy,
   toCSV,
@@ -22,6 +22,7 @@ import {
   parseICS,
   createToast,
   priorityLabel,
+  statusLabel,
 } from './utils.js';
 
 const STORAGE_KEYS = {
@@ -31,339 +32,444 @@ const STORAGE_KEYS = {
 
 const state = {
   supabase: null,
-  session: null,
-  user: null,
   clients: [],
   timeEntries: [],
-  planning: [],
+  planningEntries: [],
   invoices: [],
+  invoiceItems: new Map(),
   tasks: [],
+  importedEvents: [],
+  activeWeekStart: getWeekStart(new Date()),
   timer: {
     running: false,
-    startedAt: null,
+    start: null,
     clientId: null,
     description: '',
   },
   timerInterval: null,
-  activeWeek: startOfWeek(new Date()),
   chart: null,
   chartMode: 'revenue',
+  invoiceDraftItems: [],
   drawerEntries: [],
-  authMode: 'signin',
 };
 
 const elements = {
   navButtons: document.querySelectorAll('.nav-button'),
   views: document.querySelectorAll('.view'),
-  connectionBadge: document.getElementById('connection-status'),
-  userBadge: document.getElementById('user-status'),
-  openSettings: document.getElementById('open-settings'),
-  refreshButton: document.getElementById('refresh-button'),
-  logoutButton: document.getElementById('logout-button'),
-  settingsModal: document.getElementById('settings-modal'),
-  authModal: document.getElementById('auth-modal'),
-  clientModal: document.getElementById('client-modal'),
-  invoiceModal: document.getElementById('invoice-modal'),
-  invoiceEmailModal: document.getElementById('invoice-email-modal'),
-  taskModal: document.getElementById('task-modal'),
-  drawer: document.getElementById('drawer'),
-  backdrop: document.getElementById('modal-backdrop'),
-  settingsForm: document.getElementById('settings-form'),
+  connectionIndicator: document.getElementById('connection-indicator'),
+  supabaseModal: document.getElementById('supabase-modal'),
+  supabaseForm: document.getElementById('supabase-form'),
   supabaseUrl: document.getElementById('supabase-url'),
   supabaseKey: document.getElementById('supabase-key'),
-  clearSettings: document.getElementById('clear-settings'),
-  authForm: document.getElementById('auth-form'),
-  authEmail: document.getElementById('auth-email'),
-  authPassword: document.getElementById('auth-password'),
-  authSubmit: document.getElementById('auth-submit'),
-  authToggle: document.getElementById('auth-toggle'),
-  authMessage: document.getElementById('auth-message'),
-  dashboardRange: document.getElementById('dashboard-range'),
-  metricRevenue: document.getElementById('metric-revenue'),
-  metricRevenueDelta: document.getElementById('metric-revenue-delta'),
-  metricRevenueRange: document.getElementById('metric-revenue-range'),
-  metricHours: document.getElementById('metric-hours'),
-  metricHoursDelta: document.getElementById('metric-hours-delta'),
-  metricHoursRange: document.getElementById('metric-hours-range'),
-  metricOpenInvoices: document.getElementById('metric-open-invoices'),
-  metricOpenCount: document.getElementById('metric-open-count'),
-  metricPriority: document.getElementById('metric-priority'),
-  dashboardEvents: document.getElementById('dashboard-events'),
-  dashboardTasks: document.getElementById('dashboard-tasks'),
-  chartCanvas: document.getElementById('performance-chart'),
-  toggleChart: document.getElementById('toggle-chart'),
-  clientSearch: document.getElementById('client-search'),
-  addClient: document.getElementById('add-client'),
-  addClientEmpty: document.getElementById('empty-add-client'),
-  clientsTable: document.getElementById('clients-table'),
+  modalBackdrop: document.getElementById('modal-backdrop'),
+  dashboardPeriod: document.getElementById('dashboard-period'),
+  revenueTrend: document.getElementById('revenue-trend'),
+  hoursTrend: document.getElementById('hours-trend'),
+  totalRevenue: document.getElementById('total-revenue'),
+  totalHours: document.getElementById('total-hours'),
+  revenuePeriodLabel: document.getElementById('revenue-period-label'),
+  hoursPeriodLabel: document.getElementById('hours-period-label'),
+  openInvoices: document.getElementById('open-invoices'),
+  openInvoicesCount: document.getElementById('open-invoices-count'),
+  priorityTasks: document.getElementById('priority-tasks'),
+  performanceChart: document.getElementById('performance-chart'),
+  upcomingEvents: document.getElementById('upcoming-events'),
+  criticalTasks: document.getElementById('critical-tasks'),
+  toggleChartView: document.getElementById('toggle-chart-view'),
+  clientTable: document.getElementById('clients-table'),
   clientsEmpty: document.getElementById('clients-empty'),
-  clientForm: document.getElementById('client-form'),
-  clientId: document.getElementById('client-id'),
-  clientName: document.getElementById('client-name'),
-  clientEmail: document.getElementById('client-email'),
-  clientPhone: document.getElementById('client-phone'),
-  clientRate: document.getElementById('client-rate'),
-  clientNotes: document.getElementById('client-notes'),
-  clientModalTitle: document.getElementById('client-modal-title'),
-  timeWeek: document.getElementById('time-week'),
+  clientSearch: document.getElementById('client-search'),
   timerDisplay: document.getElementById('timer-display'),
   timerClient: document.getElementById('timer-client'),
   timerDescription: document.getElementById('timer-description'),
   startTimer: document.getElementById('start-timer'),
   stopTimer: document.getElementById('stop-timer'),
   resetTimer: document.getElementById('reset-timer'),
-  timerFeedback: document.getElementById('timer-feedback'),
-  manualForm: document.getElementById('manual-time-form'),
+  timerSummary: document.getElementById('timer-summary'),
   manualClient: document.getElementById('manual-client'),
+  manualForm: document.getElementById('manual-time-form'),
   manualStart: document.getElementById('manual-start'),
   manualEnd: document.getElementById('manual-end'),
   manualDescription: document.getElementById('manual-description'),
-  timeTable: document.getElementById('time-table'),
+  manualBillable: document.getElementById('manual-billable'),
+  manualRate: document.getElementById('manual-rate'),
+  timeWeek: document.getElementById('time-week'),
+  timeEntries: document.getElementById('time-entries'),
   timeEmpty: document.getElementById('time-empty'),
-  exportWeek: document.getElementById('export-week'),
+  exportWeekCsv: document.getElementById('export-week-csv'),
   planningForm: document.getElementById('planning-form'),
-  planningTitleInput: document.getElementById('planning-title-input'),
-  planningClient: document.getElementById('planning-client'),
+  planningTitle: document.getElementById('planning-title-input'),
   planningStart: document.getElementById('planning-start'),
   planningEnd: document.getElementById('planning-end'),
   planningLocation: document.getElementById('planning-location'),
   planningLink: document.getElementById('planning-link'),
+  planningNotes: document.getElementById('planning-notes'),
+  planningWeekLabel: document.getElementById('current-week-label'),
   previousWeek: document.getElementById('previous-week'),
   nextWeek: document.getElementById('next-week'),
-  weekLabel: document.getElementById('week-label'),
-  planningGrid: document.getElementById('planning-grid'),
+  weekGrid: document.getElementById('week-grid'),
+  exportIcs: document.getElementById('export-week-ics'),
   importIcs: document.getElementById('import-ics'),
-  exportIcs: document.getElementById('export-ics'),
-  invoiceFilter: document.getElementById('invoice-filter'),
-  newInvoice: document.getElementById('new-invoice'),
-  emptyInvoice: document.getElementById('empty-new-invoice'),
   invoiceTable: document.getElementById('invoice-table'),
   invoiceEmpty: document.getElementById('invoice-empty'),
+  invoiceFilter: document.getElementById('invoice-status-filter'),
+  invoiceModal: document.getElementById('invoice-modal'),
   invoiceForm: document.getElementById('invoice-form'),
-  invoiceModalTitle: document.getElementById('invoice-modal-title'),
   invoiceId: document.getElementById('invoice-id'),
   invoiceClient: document.getElementById('invoice-client'),
   invoiceNumber: document.getElementById('invoice-number'),
-  invoiceIssue: document.getElementById('invoice-issue'),
-  invoiceDue: document.getElementById('invoice-due'),
-  invoiceVat: document.getElementById('invoice-vat'),
-  invoicePaid: document.getElementById('invoice-paid'),
+  invoiceIssueDate: document.getElementById('invoice-issue-date'),
+  invoiceDueDate: document.getElementById('invoice-due-date'),
+  invoiceStatus: document.getElementById('invoice-status'),
+  invoiceNotes: document.getElementById('invoice-notes'),
   invoiceTotal: document.getElementById('invoice-total'),
   lineItemsContainer: document.getElementById('line-items-container'),
   lineItemTemplate: document.getElementById('line-item-template'),
-  loadTimeEntries: document.getElementById('load-time-entries'),
   addLineItem: document.getElementById('add-line-item'),
+  loadTimeEntries: document.getElementById('load-time-entries'),
+  invoiceEmailModal: document.getElementById('invoice-email-modal'),
   invoiceEmailForm: document.getElementById('invoice-email-form'),
   emailInvoiceId: document.getElementById('email-invoice-id'),
   emailRecipient: document.getElementById('email-recipient'),
   emailSubject: document.getElementById('email-subject'),
-  emailBody: document.getElementById('email-body'),
-  drawerForm: document.getElementById('drawer-form'),
-  drawerTable: document.getElementById('drawer-table'),
+  emailMessage: document.getElementById('email-message'),
+  drawer: document.getElementById('drawer'),
+  drawerFilter: document.getElementById('drawer-filter'),
   drawerStart: document.getElementById('drawer-start'),
   drawerEnd: document.getElementById('drawer-end'),
-  addSelectedTime: document.getElementById('add-selected-time'),
-  taskTable: document.getElementById('task-table'),
+  drawerTable: document.getElementById('drawer-time-entries'),
+  taskBoard: document.getElementById('task-board'),
   tasksEmpty: document.getElementById('tasks-empty'),
-  addTask: document.getElementById('add-task'),
-  addTaskEmpty: document.getElementById('empty-add-task'),
-  taskCompleteFilter: document.getElementById('task-complete-filter'),
-  taskPriorityFilter: document.getElementById('task-priority-filter'),
+  taskModal: document.getElementById('task-modal'),
   taskForm: document.getElementById('task-form'),
   taskId: document.getElementById('task-id'),
   taskTitle: document.getElementById('task-title'),
+  taskDescription: document.getElementById('task-description'),
   taskDeadline: document.getElementById('task-deadline'),
   taskPriority: document.getElementById('task-priority'),
-  taskDone: document.getElementById('task-done'),
-  taskModalTitle: document.getElementById('task-modal-title'),
+  taskStatus: document.getElementById('task-status'),
+  taskStatusFilter: document.getElementById('task-status-filter'),
+  taskPriorityFilter: document.getElementById('task-priority-filter'),
+  taskTemplate: document.getElementById('task-card-template'),
+  clientModal: document.getElementById('client-modal'),
+  clientForm: document.getElementById('client-form'),
+  clientId: document.getElementById('client-id'),
+  clientModalTitle: document.getElementById('client-modal-title'),
+  clientName: document.getElementById('client-name'),
+  clientContact: document.getElementById('client-contact'),
+  clientEmail: document.getElementById('client-email'),
+  clientPhone: document.getElementById('client-phone'),
+  clientAddress: document.getElementById('client-address'),
+  clientRate: document.getElementById('client-rate'),
+  clientNotes: document.getElementById('client-notes'),
+  timerSummaryBox: document.getElementById('timer-summary'),
 };
+
+const openModalButtons = {
+  supabase: document.getElementById('open-supabase-settings'),
+  addClient: document.getElementById('add-client'),
+  addClientEmpty: document.getElementById('empty-add-client'),
+  addTask: document.getElementById('add-task'),
+  addTaskEmpty: document.getElementById('empty-add-task'),
+  newInvoice: document.getElementById('new-invoice'),
+  emptyInvoice: document.getElementById('empty-new-invoice'),
+};
+
+const closeButtons = {
+  cancelSupabase: document.getElementById('cancel-supabase'),
+  cancelClient: document.getElementById('cancel-client'),
+  cancelInvoice: document.getElementById('cancel-invoice'),
+  cancelTask: document.getElementById('cancel-task'),
+  cancelEmail: document.getElementById('cancel-email'),
+  closeDrawer: document.getElementById('close-drawer'),
+};
+
+const addSelectedTime = document.getElementById('add-selected-time');
+const refreshDataButton = document.getElementById('refresh-data');
+const startTimerButton = document.getElementById('start-timer');
+const stopTimerButton = document.getElementById('stop-timer');
+const resetTimerButton = document.getElementById('reset-timer');
 
 init();
 
 function init() {
   attachEventListeners();
   initializeDefaults();
-  restoreSupabaseConfig();
+  tryRestoreSupabaseConfig();
 }
+
 function attachEventListeners() {
   elements.navButtons.forEach((button) =>
-    button.addEventListener('click', () => switchView(button.dataset.view || button.dataset.target))
+    button.addEventListener('click', () => switchView(button.dataset.target))
   );
 
-  elements.openSettings?.addEventListener('click', () => openSettingsModal());
-  elements.refreshButton?.addEventListener('click', () => loadAllData());
-  elements.logoutButton?.addEventListener('click', handleLogout);
+  elements.dashboardPeriod?.addEventListener('change', renderDashboard);
 
-  document.querySelectorAll('[data-close]').forEach((button) =>
-    button.addEventListener('click', (event) => {
-      const modal = event.target.closest('.modal, .drawer');
-      if (modal) closeModal(modal);
-    })
-  );
+  if (elements.toggleChartView) {
+    elements.toggleChartView.addEventListener('click', () => {
+      state.chartMode = state.chartMode === 'revenue' ? 'hours' : 'revenue';
+      renderChart();
+      elements.toggleChartView.textContent =
+        state.chartMode === 'revenue' ? 'Toon uren' : 'Toon omzet';
+    });
+  }
 
-  elements.settingsForm?.addEventListener('submit', handleSupabaseSubmit);
-  elements.clearSettings?.addEventListener('click', clearSupabaseConfig);
+  refreshDataButton?.addEventListener('click', () => {
+    if (!state.supabase) {
+      createToast('Verbind eerst met Supabase.', 'error');
+      return;
+    }
+    loadAllData();
+  });
 
-  elements.authForm?.addEventListener('submit', handleAuthSubmit);
-  elements.authToggle?.addEventListener('click', toggleAuthMode);
+  openModalButtons.supabase?.addEventListener('click', () => openModal(elements.supabaseModal));
+  openModalButtons.addClient?.addEventListener('click', () => openClientModal());
+  openModalButtons.addClientEmpty?.addEventListener('click', () => openClientModal());
+  openModalButtons.addTask?.addEventListener('click', () => openTaskModal());
+  openModalButtons.addTaskEmpty?.addEventListener('click', () => openTaskModal());
+  openModalButtons.newInvoice?.addEventListener('click', () => openInvoiceModal());
+  openModalButtons.emptyInvoice?.addEventListener('click', () => openInvoiceModal());
 
-  elements.dashboardRange?.addEventListener('change', renderDashboard);
-  elements.toggleChart?.addEventListener('click', toggleChartMode);
+  closeButtons.cancelSupabase?.addEventListener('click', () => closeModal(elements.supabaseModal));
+  closeButtons.cancelClient?.addEventListener('click', () => closeModal(elements.clientModal));
+  closeButtons.cancelInvoice?.addEventListener('click', () => closeModal(elements.invoiceModal));
+  closeButtons.cancelTask?.addEventListener('click', () => closeModal(elements.taskModal));
+  closeButtons.cancelEmail?.addEventListener('click', () => closeModal(elements.invoiceEmailModal));
+  closeButtons.closeDrawer?.addEventListener('click', () => toggleDrawer(false));
 
-  elements.clientSearch?.addEventListener('input', renderClients);
-  elements.addClient?.addEventListener('click', () => openClientModal());
-  elements.addClientEmpty?.addEventListener('click', () => openClientModal());
+  document.getElementById('cancel-supabase')?.addEventListener('click', resetSupabaseConfig);
+
+  elements.supabaseForm?.addEventListener('submit', handleSupabaseSubmit);
   elements.clientForm?.addEventListener('submit', handleClientSubmit);
-  elements.clientsTable?.addEventListener('click', handleClientTableClick);
+  elements.manualForm?.addEventListener('submit', handleManualTimeSubmit);
+  elements.planningForm?.addEventListener('submit', handlePlanningSubmit);
+  elements.invoiceForm?.addEventListener('submit', handleInvoiceSubmit);
+  elements.invoiceEmailForm?.addEventListener('submit', handleInvoiceEmailSubmit);
+  elements.taskForm?.addEventListener('submit', handleTaskSubmit);
+
+  elements.clientSearch?.addEventListener('input', handleClientSearch);
+  elements.invoiceFilter?.addEventListener('change', renderInvoices);
+  elements.taskStatusFilter?.addEventListener('change', renderTasks);
+  elements.taskPriorityFilter?.addEventListener('change', renderTasks);
 
   elements.timeWeek?.addEventListener('change', handleWeekChange);
-  elements.startTimer?.addEventListener('click', startTimer);
-  elements.stopTimer?.addEventListener('click', stopTimer);
-  elements.resetTimer?.addEventListener('click', resetTimer);
-  elements.manualForm?.addEventListener('submit', handleManualTimeSubmit);
-  elements.timeTable?.addEventListener('click', handleTimeTableClick);
-  elements.exportWeek?.addEventListener('click', exportWeekCsv);
 
-  elements.planningForm?.addEventListener('submit', handlePlanningSubmit);
-  elements.previousWeek?.addEventListener('click', () => changeWeek(-1));
-  elements.nextWeek?.addEventListener('click', () => changeWeek(1));
-  elements.planningGrid?.addEventListener('click', handlePlanningGridClick);
+  startTimerButton?.addEventListener('click', startTimer);
+  stopTimerButton?.addEventListener('click', stopTimer);
+  resetTimerButton?.addEventListener('click', resetTimer);
+
+  elements.exportWeekCsv?.addEventListener('click', exportWeekCsv);
+  elements.exportIcs?.addEventListener('click', exportWeekIcs);
   elements.importIcs?.addEventListener('change', importIcsFile);
-  elements.exportIcs?.addEventListener('click', exportIcsFile);
-
-  elements.invoiceFilter?.addEventListener('change', renderInvoices);
-  elements.newInvoice?.addEventListener('click', () => openInvoiceModal());
-  elements.emptyInvoice?.addEventListener('click', () => openInvoiceModal());
-  elements.invoiceTable?.addEventListener('click', handleInvoiceTableClick);
-  elements.invoiceForm?.addEventListener('submit', handleInvoiceSubmit);
-  elements.invoiceVat?.addEventListener('input', updateInvoiceSummary);
-  elements.loadTimeEntries?.addEventListener('click', openDrawer);
   elements.addLineItem?.addEventListener('click', () => addLineItem());
-  elements.invoiceEmailForm?.addEventListener('submit', handleInvoiceEmailSubmit);
+  elements.loadTimeEntries?.addEventListener('click', handleLoadTimeEntries);
+  addSelectedTime?.addEventListener('click', addSelectedTimeEntries);
 
-  elements.drawerForm?.addEventListener('submit', handleDrawerFilterSubmit);
-  elements.addSelectedTime?.addEventListener('click', addSelectedTimeEntries);
-
-  elements.addTask?.addEventListener('click', () => openTaskModal());
-  elements.addTaskEmpty?.addEventListener('click', () => openTaskModal());
-  elements.taskForm?.addEventListener('submit', handleTaskSubmit);
-  elements.taskTable?.addEventListener('click', handleTaskTableClick);
-  elements.taskCompleteFilter?.addEventListener('change', renderTasks);
-  elements.taskPriorityFilter?.addEventListener('change', renderTasks);
+  elements.clientTable?.addEventListener('click', handleClientTableClick);
+  elements.timeEntries?.addEventListener('click', handleTimeEntriesClick);
+  elements.weekGrid?.addEventListener('click', handleWeekGridClick);
+  elements.invoiceTable?.addEventListener('click', handleInvoiceTableClick);
+  elements.taskBoard?.addEventListener('click', handleTaskBoardClick);
+  elements.drawerFilter?.addEventListener('submit', handleDrawerFilterSubmit);
 }
 
 function initializeDefaults() {
-  if (elements.timeWeek) {
-    const week = state.activeWeek;
-    const year = week.getFullYear();
-    const weekNumber = getWeekNumber(week);
-    elements.timeWeek.value = `${year}-W${String(weekNumber).padStart(2, '0')}`;
-  }
-  if (elements.manualStart && elements.manualEnd) {
-    const end = new Date();
-    const start = new Date(end.getTime() - 60 * 60 * 1000);
-    elements.manualStart.value = getISODateTimeLocal(start);
-    elements.manualEnd.value = getISODateTimeLocal(end);
-  }
-  if (elements.invoiceIssue) elements.invoiceIssue.value = getISODate(new Date());
-  if (elements.invoiceDue) {
-    const due = new Date();
-    due.setDate(due.getDate() + 14);
-    elements.invoiceDue.value = getISODate(due);
-  }
-  updateWeekLabel();
+  elements.timeWeek.value = formatWeekInputValue(state.activeWeekStart);
+  updatePlanningWeekLabel();
+  populateManualNow();
+  elements.invoiceIssueDate.value = getISODate(new Date());
+  const due = new Date();
+  due.setDate(due.getDate() + 14);
+  elements.invoiceDueDate.value = getISODate(due);
 }
 
-function restoreSupabaseConfig() {
+function tryRestoreSupabaseConfig() {
   const url = localStorage.getItem(STORAGE_KEYS.url);
   const key = localStorage.getItem(STORAGE_KEYS.key);
   if (url && key) {
-    elements.supabaseUrl.value = url;
-    elements.supabaseKey.value = key;
     connectSupabase(url, key);
   } else {
-    openSettingsModal();
+    openModal(elements.supabaseModal);
   }
 }
 
 async function connectSupabase(url, key) {
   try {
     state.supabase = initSupabase({ url, key });
-    const { error } = await getSupabase().from('clients').select('id').limit(1);
-    if (error) throw error;
+    const ok = await testConnection();
+    if (!ok) {
+      throw new Error('Kan geen verbinding maken met Supabase. Controleer de gegevens.');
+    }
     localStorage.setItem(STORAGE_KEYS.url, url);
     localStorage.setItem(STORAGE_KEYS.key, key);
     setConnectionStatus(true);
-    registerAuthListener();
-    await resolveSession();
-    closeModal(elements.settingsModal);
+    closeModal(elements.supabaseModal);
     createToast('Verbonden met Supabase', 'success');
+    await loadAllData();
   } catch (error) {
     console.error(error);
-    createToast(error.message || 'Kon geen verbinding maken met Supabase', 'error');
+    createToast(error.message || 'Kan niet verbinden met Supabase', 'error');
     setConnectionStatus(false);
-    openSettingsModal();
-  }
-}
-
-function registerAuthListener() {
-  if (!state.supabase) return;
-  state.supabase.auth.onAuthStateChange((_event, session) => handleSession(session));
-}
-
-async function resolveSession() {
-  if (!state.supabase) return;
-  const { data, error } = await state.supabase.auth.getSession();
-  if (error) {
-    console.error(error);
-    return;
-  }
-  handleSession(data.session);
-}
-
-function handleSession(session) {
-  state.session = session;
-  state.user = session?.user || null;
-  if (state.user) {
-    elements.logoutButton.classList.remove('hidden');
-    elements.userBadge.classList.remove('hidden');
-    elements.userBadge.textContent = state.user.email;
-    closeModal(elements.authModal);
-    loadAllData();
-  } else {
-    elements.logoutButton.classList.add('hidden');
-    elements.userBadge.classList.add('hidden');
-    elements.userBadge.textContent = '';
-    openModal(elements.authModal);
-    clearData();
   }
 }
 
 function setConnectionStatus(connected) {
-  if (!elements.connectionBadge) return;
-  elements.connectionBadge.textContent = connected ? 'Verbonden' : 'Niet verbonden';
-  elements.connectionBadge.classList.toggle('badge-success', connected);
-  elements.connectionBadge.classList.toggle('badge-danger', !connected);
+  if (!elements.connectionIndicator) return;
+  elements.connectionIndicator.textContent = connected ? 'Verbonden' : 'Niet verbonden';
+  elements.connectionIndicator.classList.toggle('status-badge--success', connected);
+  elements.connectionIndicator.classList.toggle('status-badge--danger', !connected);
 }
 
-function clearData() {
-  state.clients = [];
-  state.timeEntries = [];
-  state.planning = [];
-  state.invoices = [];
-  state.tasks = [];
-  renderClients();
-  renderTimeEntries();
-  renderPlanning();
-  renderInvoices();
-  renderTasks();
-  renderDashboard();
+function resetSupabaseConfig() {
+  resetSupabase();
+  state.supabase = null;
+  setConnectionStatus(false);
+  localStorage.removeItem(STORAGE_KEYS.url);
+  localStorage.removeItem(STORAGE_KEYS.key);
 }
 
-function openSettingsModal() {
-  elements.supabaseUrl.value = localStorage.getItem(STORAGE_KEYS.url) || '';
-  elements.supabaseKey.value = localStorage.getItem(STORAGE_KEYS.key) || '';
-  openModal(elements.settingsModal);
+function openModal(modal) {
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  elements.modalBackdrop?.classList.remove('hidden');
+}
+
+function closeModal(modal) {
+  if (!modal) return;
+  modal.classList.add('hidden');
+  const anyOpen = Array.from(document.querySelectorAll('.modal')).some(
+    (item) => !item.classList.contains('hidden')
+  );
+  if (!anyOpen) {
+    elements.modalBackdrop?.classList.add('hidden');
+  }
+}
+
+function formatWeekInputValue(date) {
+  const target = new Date(date.valueOf());
+  const dayNr = (target.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const weekNumber =
+    1 + Math.round(((target - firstThursday) / 86400000 - 3 + ((firstThursday.getDay() + 6) % 7)) / 7);
+  const weekStr = String(weekNumber).padStart(2, '0');
+  return `${target.getFullYear()}-W${weekStr}`;
+}
+
+function updatePlanningWeekLabel() {
+  if (!elements.planningWeekLabel) return;
+  elements.planningWeekLabel.textContent = formatWeekRange(state.activeWeekStart);
+}
+
+function populateManualNow() {
+  const now = new Date();
+  const earlier = new Date(now);
+  earlier.setHours(now.getHours() - 1);
+  elements.manualStart.value = getISODateTimeLocal(earlier);
+  elements.manualEnd.value = getISODateTimeLocal(now);
+}
+
+function updateTimerClients() {
+  const options = state.clients
+    .map((client) => `<option value="${client.id}">${client.name}</option>`)
+    .join('');
+  elements.timerClient.innerHTML = `<option value="">Selecteer klant</option>${options}`;
+  elements.manualClient.innerHTML = `<option value="">Selecteer klant</option>${options}`;
+  elements.invoiceClient.innerHTML = `<option value="">Selecteer klant</option>${options}`;
+}
+
+async function loadAllData() {
+  if (!state.supabase) return;
+  setLoading(true);
+  try {
+    await Promise.all([
+      loadClients(),
+      loadTimeEntries(),
+      loadPlanningEntries(),
+      loadInvoices(),
+      loadTasks(),
+    ]);
+    renderClients();
+    renderTimeEntries();
+    renderPlanning();
+    renderInvoices();
+    renderTasks();
+    renderDashboard();
+    updateTimerClients();
+  } catch (error) {
+    console.error(error);
+    createToast('Kon gegevens niet laden', 'error');
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setLoading(isLoading) {
+  if (!refreshDataButton) return;
+  refreshDataButton.disabled = isLoading;
+  refreshDataButton.textContent = isLoading ? 'Laden…' : 'Gegevens verversen';
+}
+
+async function loadClients() {
+  const { data, error } = await getSupabase()
+    .from('clients')
+    .select('*')
+    .order('name');
+  if (error) throw error;
+  state.clients = data || [];
+}
+
+async function loadTimeEntries() {
+  const since = new Date();
+  since.setDate(since.getDate() - 365);
+  const { data, error } = await getSupabase()
+    .from('time_entries')
+    .select('*, client:clients(id, name, hourly_rate)')
+    .gte('start_time', since.toISOString())
+    .order('start_time', { ascending: false });
+  if (error) throw error;
+  state.timeEntries = data || [];
+}
+
+async function loadPlanningEntries() {
+  const start = new Date(state.activeWeekStart);
+  start.setDate(start.getDate() - 14);
+  const end = new Date(state.activeWeekStart);
+  end.setDate(end.getDate() + 21);
+  const { data, error } = await getSupabase()
+    .from('planning_entries')
+    .select('*')
+    .gte('start_time', start.toISOString())
+    .lte('end_time', end.toISOString())
+    .order('start_time');
+  if (error) throw error;
+  state.planningEntries = data || [];
+}
+
+async function loadInvoices() {
+  const since = new Date();
+  since.setDate(since.getDate() - 540);
+  const { data, error } = await getSupabase()
+    .from('invoices')
+    .select('*, client:clients(id, name), items:invoice_items(*)')
+    .gte('issue_date', since.toISOString())
+    .order('issue_date', { ascending: false });
+  if (error) throw error;
+  state.invoices = (data || []).map((invoice) => ({
+    ...invoice,
+    items: invoice.items || [],
+  }));
+  state.invoiceItems.clear();
+  state.invoices.forEach((invoice) => state.invoiceItems.set(invoice.id, invoice.items));
+}
+
+async function loadTasks() {
+  const { data, error } = await getSupabase()
+    .from('tasks')
+    .select('*')
+    .order('deadline', { ascending: true });
+  if (error) throw error;
+  state.tasks = data || [];
 }
 
 function handleSupabaseSubmit(event) {
@@ -377,192 +483,45 @@ function handleSupabaseSubmit(event) {
   connectSupabase(url, key);
 }
 
-function clearSupabaseConfig() {
-  localStorage.removeItem(STORAGE_KEYS.url);
-  localStorage.removeItem(STORAGE_KEYS.key);
-  resetSupabase();
-  state.supabase = null;
-  setConnectionStatus(false);
-  state.session = null;
-  state.user = null;
-  clearData();
-  openSettingsModal();
-}
-
-async function handleLogout() {
-  if (!state.supabase) return;
-  await state.supabase.auth.signOut();
-  createToast('Uitgelogd', 'success');
-}
-
-function toggleAuthMode() {
-  state.authMode = state.authMode === 'signin' ? 'signup' : 'signin';
-  if (state.authMode === 'signin') {
-    elements.authSubmit.textContent = 'Inloggen';
-    elements.authToggle.textContent = 'Nog geen account?';
-  } else {
-    elements.authSubmit.textContent = 'Account aanmaken';
-    elements.authToggle.textContent = 'Ik heb al een account';
-  }
-  elements.authMessage.textContent = '';
-}
-
-async function handleAuthSubmit(event) {
-  event.preventDefault();
-  if (!state.supabase) return;
-  const email = elements.authEmail.value.trim();
-  const password = elements.authPassword.value.trim();
-  if (!email || !password) {
-    elements.authMessage.textContent = 'Vul e-mail en wachtwoord in.';
-    return;
-  }
-  try {
-    if (state.authMode === 'signin') {
-      const { error } = await state.supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      elements.authMessage.textContent = '';
-      createToast('Succesvol ingelogd', 'success');
-    } else {
-      const { error } = await state.supabase.auth.signUp({ email, password });
-      if (error) throw error;
-      elements.authMessage.textContent =
-        'Account aangemaakt. Bevestig je e-mailadres indien Supabase dat vereist.';
-      createToast('Account aangemaakt', 'success');
-    }
-  } catch (error) {
-    console.error(error);
-    elements.authMessage.textContent = error.message || 'Inloggen mislukt';
-    createToast(error.message || 'Authenticatie mislukt', 'error');
-  }
-}
-
-async function loadAllData() {
-  if (!state.supabase || !state.user) return;
-  try {
-    elements.refreshButton.disabled = true;
-    elements.refreshButton.textContent = 'Laden…';
-    await Promise.all([
-      loadClients(),
-      loadTimeEntries(),
-      loadPlanning(),
-      loadInvoices(),
-      loadTasks(),
-    ]);
-    renderClients();
-    renderTimeEntries();
-    renderPlanning();
-    renderInvoices();
-    renderTasks();
-    renderDashboard();
-    updateClientSelects();
-  } catch (error) {
-    console.error(error);
-    createToast('Gegevens konden niet worden geladen', 'error');
-  } finally {
-    elements.refreshButton.disabled = false;
-    elements.refreshButton.textContent = 'Verversen';
-  }
-}
-async function loadClients() {
-  const { data, error } = await getSupabase()
-    .from('clients')
-    .select('*')
-    .eq('user_id', state.user.id)
-    .order('name');
-  if (error) throw error;
-  state.clients = data || [];
-}
-
-async function loadTimeEntries() {
-  const since = new Date();
-  since.setDate(since.getDate() - 365);
-  const { data, error } = await getSupabase()
-    .from('time_entries')
-    .select('*, client:clients(id, name, hourly_rate)')
-    .eq('user_id', state.user.id)
-    .gte('started_at', since.toISOString())
-    .order('started_at', { ascending: false });
-  if (error) throw error;
-  state.timeEntries = data || [];
-}
-
-async function loadPlanning() {
-  const start = addDays(state.activeWeek, -14);
-  const end = addDays(state.activeWeek, 21);
-  const { data, error } = await getSupabase()
-    .from('planning_events')
-    .select('*')
-    .eq('user_id', state.user.id)
-    .gte('starts_at', start.toISOString())
-    .lte('ends_at', end.toISOString())
-    .order('starts_at');
-  if (error) throw error;
-  state.planning = data || [];
-}
-
-async function loadInvoices() {
-  const since = new Date();
-  since.setMonth(since.getMonth() - 18);
-  const { data, error } = await getSupabase()
-    .from('invoices')
-    .select('*, client:clients(id, name, email, phone), items:invoice_items(*)')
-    .eq('user_id', state.user.id)
-    .gte('issue_date', since.toISOString())
-    .order('issue_date', { ascending: false });
-  if (error) throw error;
-  state.invoices = (data || []).map((invoice) => ({
-    ...invoice,
-    items: invoice.items || [],
-  }));
-}
-
-async function loadTasks() {
-  const { data, error } = await getSupabase()
-    .from('tasks')
-    .select('*')
-    .eq('user_id', state.user.id)
-    .order('due_date', { ascending: true });
-  if (error) throw error;
-  state.tasks = data || [];
-}
-
-function switchView(view) {
-  elements.navButtons.forEach((button) =>
-    button.classList.toggle('active', (button.dataset.view || button.dataset.target) === view)
-  );
-  elements.views.forEach((section) => section.classList.toggle('active', section.id === view));
+function switchView(target) {
+  elements.navButtons.forEach((button) => button.classList.toggle('active', button.dataset.target === target));
+  elements.views.forEach((view) => view.classList.toggle('active', view.id === target));
 }
 
 function renderClients() {
   const query = (elements.clientSearch?.value || '').toLowerCase();
-  const rows = state.clients.filter((client) =>
-    [client.name, client.email, client.phone]
+  const clients = state.clients.filter((client) =>
+    [client.name, client.contact_name, client.email]
       .filter(Boolean)
-      .some((value) => value.toLowerCase().includes(query))
+      .some((field) => field.toLowerCase().includes(query))
   );
-  elements.clientsEmpty?.classList.toggle('hidden', rows.length > 0);
-  elements.clientsTable.innerHTML = rows
+  elements.clientsEmpty?.classList.toggle('hidden', clients.length > 0);
+  elements.clientTable.innerHTML = clients
     .map((client) => {
-      const lastEntry = state.timeEntries.find((entry) => Number(entry.client_id) === Number(client.id));
+      const lastEntry = state.timeEntries.find((entry) => entry.client_id === client.id);
       return `
         <tr data-id="${client.id}">
           <td>
             <strong>${client.name}</strong>
-            ${client.notes ? `<div class="muted">${client.notes}</div>` : ''}
+            ${client.contact_name ? `<div class="muted">${client.contact_name}</div>` : ''}
           </td>
           <td>
             ${client.email ? `<div>${client.email}</div>` : ''}
             ${client.phone ? `<div class="muted">${client.phone}</div>` : ''}
           </td>
           <td>${client.hourly_rate ? formatCurrency(client.hourly_rate) : '—'}</td>
-          <td>${lastEntry ? formatDate(lastEntry.started_at) : 'Nog geen uren'}</td>
+          <td>${lastEntry ? formatDate(lastEntry.start_time) : 'Nog geen uren'}</td>
           <td class="table-actions">
-            <button type="button" class="ghost-button" data-action="edit">Wijzig</button>
-            <button type="button" class="ghost-button" data-action="delete">Verwijder</button>
+            <button class="ghost-button" data-action="edit">Wijzig</button>
+            <button class="ghost-button" data-action="delete">Verwijder</button>
           </td>
         </tr>`;
     })
     .join('');
+}
+
+function handleClientSearch() {
+  renderClients();
 }
 
 function openClientModal(client = null) {
@@ -571,8 +530,10 @@ function openClientModal(client = null) {
   elements.clientModalTitle.textContent = client ? 'Klant bewerken' : 'Nieuwe klant';
   if (client) {
     elements.clientName.value = client.name || '';
+    elements.clientContact.value = client.contact_name || '';
     elements.clientEmail.value = client.email || '';
     elements.clientPhone.value = client.phone || '';
+    elements.clientAddress.value = client.address || '';
     elements.clientRate.value = client.hourly_rate || '';
     elements.clientNotes.value = client.notes || '';
   }
@@ -581,38 +542,31 @@ function openClientModal(client = null) {
 
 async function handleClientSubmit(event) {
   event.preventDefault();
-  if (!state.user) return;
+  if (!state.supabase) return;
   const payload = {
-    user_id: state.user.id,
     name: elements.clientName.value.trim(),
+    contact_name: elements.clientContact.value.trim() || null,
     email: elements.clientEmail.value.trim() || null,
     phone: elements.clientPhone.value.trim() || null,
+    address: elements.clientAddress.value.trim() || null,
     hourly_rate: elements.clientRate.value ? Number(elements.clientRate.value) : null,
     notes: elements.clientNotes.value.trim() || null,
   };
-  if (!payload.name) {
-    createToast('Naam is verplicht', 'error');
-    return;
-  }
+  const id = elements.clientId.value;
   try {
-    const id = elements.clientId.value;
     if (id) {
-      const { error } = await getSupabase()
-        .from('clients')
-        .update(payload)
-        .eq('id', id)
-        .eq('user_id', state.user.id);
+      const { error } = await getSupabase().from('clients').update(payload).eq('id', id);
       if (error) throw error;
-      createToast('Klant bijgewerkt', 'success');
+      createToast('Klant bijgewerkt');
     } else {
       const { error } = await getSupabase().from('clients').insert(payload);
       if (error) throw error;
-      createToast('Klant aangemaakt', 'success');
+      createToast('Klant aangemaakt');
     }
     closeModal(elements.clientModal);
     await loadClients();
     renderClients();
-    updateClientSelects();
+    updateTimerClients();
   } catch (error) {
     console.error(error);
     createToast('Opslaan van klant mislukt', 'error');
@@ -622,52 +576,162 @@ async function handleClientSubmit(event) {
 async function handleClientTableClick(event) {
   const row = event.target.closest('tr[data-id]');
   if (!row) return;
-  const client = state.clients.find((item) => item.id === row.dataset.id);
+  const client = state.clients.find((c) => c.id === row.dataset.id);
   if (!client) return;
   if (event.target.matches('[data-action="edit"]')) {
     openClientModal(client);
   }
   if (event.target.matches('[data-action="delete"]')) {
-    if (!confirm('Wil je deze klant verwijderen?')) return;
-    try {
-      const { error } = await getSupabase()
-        .from('clients')
-        .delete()
-        .eq('id', client.id)
-        .eq('user_id', state.user.id);
-      if (error) throw error;
-      createToast('Klant verwijderd', 'success');
-      await loadClients();
-      renderClients();
-      updateClientSelects();
-    } catch (error) {
-      console.error(error);
-      createToast('Verwijderen mislukt', 'error');
+    if (confirm('Weet je zeker dat je deze klant wilt verwijderen?')) {
+      try {
+        const { error } = await getSupabase().from('clients').delete().eq('id', client.id);
+        if (error) throw error;
+        createToast('Klant verwijderd');
+        await loadClients();
+        renderClients();
+        updateTimerClients();
+      } catch (error) {
+        console.error(error);
+        createToast('Verwijderen mislukt', 'error');
+      }
     }
   }
 }
 
-function updateClientSelects() {
-  const options = ['<option value="">Selecteer klant</option>'].concat(
-    state.clients.map((client) => `<option value="${client.id}">${client.name}</option>`)
-  );
-  const html = options.join('');
-  if (elements.timerClient) elements.timerClient.innerHTML = html;
-  if (elements.manualClient) elements.manualClient.innerHTML = html;
-  if (elements.planningClient) elements.planningClient.innerHTML = html;
-  if (elements.invoiceClient) elements.invoiceClient.innerHTML = html;
+function startTimer() {
+  if (state.timer.running) return;
+  const clientId = elements.timerClient.value;
+  if (!clientId) {
+    createToast('Selecteer eerst een klant', 'error');
+    return;
+  }
+  state.timer = {
+    running: true,
+    start: new Date(),
+    clientId,
+    description: elements.timerDescription.value.trim(),
+  };
+  startTimerButton.disabled = true;
+  stopTimerButton.disabled = false;
+  resetTimerButton.disabled = false;
+  elements.timerSummaryBox.classList.add('hidden');
+  state.timerInterval = setInterval(updateTimerDisplay, 1000);
+  updateTimerDisplay();
 }
 
-function getWeekNumber(date) {
-  const target = new Date(date.valueOf());
-  const dayNr = (target.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayNr + 3);
-  const firstThursday = new Date(target.getFullYear(), 0, 4);
-  const diff =
-    (target.getTime() - firstThursday.getTime()) / 86400000 +
-    ((firstThursday.getDay() + 6) % 7) -
-    3;
-  return 1 + Math.round(diff / 7);
+function stopTimer() {
+  if (!state.timer.running) return;
+  clearInterval(state.timerInterval);
+  state.timerInterval = null;
+  const end = new Date();
+  const duration = Math.round((end - state.timer.start) / 1000);
+  saveTimerEntry({
+    clientId: state.timer.clientId,
+    description: state.timer.description,
+    start: state.timer.start,
+    end,
+    duration,
+  });
+  state.timer.running = false;
+  startTimerButton.disabled = false;
+  stopTimerButton.disabled = true;
+  resetTimerButton.disabled = false;
+  elements.timerSummaryBox.textContent = `Gelogd: ${formatDuration(duration)} voor ${getClientName(
+    state.timer.clientId
+  )}`;
+  elements.timerSummaryBox.classList.remove('hidden');
+}
+
+function resetTimer() {
+  clearInterval(state.timerInterval);
+  state.timerInterval = null;
+  state.timer = {
+    running: false,
+    start: null,
+    clientId: null,
+    description: '',
+  };
+  elements.timerDescription.value = '';
+  elements.timerClient.value = '';
+  elements.timerDisplay.textContent = '00:00:00';
+  startTimerButton.disabled = false;
+  stopTimerButton.disabled = true;
+  resetTimerButton.disabled = true;
+}
+
+function updateTimerDisplay() {
+  if (!state.timer.running || !state.timer.start) return;
+  const now = new Date();
+  const seconds = Math.round((now - state.timer.start) / 1000);
+  elements.timerDisplay.textContent = formatDuration(seconds);
+}
+
+async function saveTimerEntry({ clientId, description, start, end, duration }) {
+  try {
+    const client = state.clients.find((c) => c.id === clientId);
+    const payload = {
+      client_id: clientId,
+      description: description || null,
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      duration_seconds: duration,
+      billable: true,
+      hourly_rate: client?.hourly_rate || null,
+    };
+    const { error } = await getSupabase().from('time_entries').insert(payload);
+    if (error) throw error;
+    createToast('Tijd geboekt');
+    await loadTimeEntries();
+    renderTimeEntries();
+    renderDashboard();
+  } catch (error) {
+    console.error(error);
+    createToast('Timer kon niet worden opgeslagen', 'error');
+  }
+}
+
+async function handleManualTimeSubmit(event) {
+  event.preventDefault();
+  const clientId = elements.manualClient.value;
+  const start = elements.manualStart.value;
+  const end = elements.manualEnd.value;
+  if (!clientId || !start || !end) {
+    createToast('Vul klant, start en eindtijd in', 'error');
+    return;
+  }
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (endDate <= startDate) {
+    createToast('Eindtijd moet na starttijd liggen', 'error');
+    return;
+  }
+  const duration = Math.round((endDate - startDate) / 1000);
+  try {
+    const payload = {
+      client_id: clientId,
+      description: elements.manualDescription.value.trim() || null,
+      start_time: startDate.toISOString(),
+      end_time: endDate.toISOString(),
+      duration_seconds: duration,
+      billable: elements.manualBillable.value === 'true',
+      hourly_rate: elements.manualRate.value ? Number(elements.manualRate.value) : null,
+    };
+    const { error } = await getSupabase().from('time_entries').insert(payload);
+    if (error) throw error;
+    createToast('Uren geregistreerd');
+    elements.manualForm.reset();
+    populateManualNow();
+    await loadTimeEntries();
+    renderTimeEntries();
+    renderDashboard();
+  } catch (error) {
+    console.error(error);
+    createToast('Kon uren niet opslaan', 'error');
+  }
+}
+
+function getClientName(id) {
+  return state.clients.find((client) => client.id === id)?.name || 'Onbekende klant';
 }
 
 function handleWeekChange(event) {
@@ -683,252 +747,98 @@ function handleWeekChange(event) {
     weekStart.setDate(simple.getDate() + 8 - simple.getDay());
   }
   weekStart.setHours(0, 0, 0, 0);
-  state.activeWeek = weekStart;
-  updateWeekLabel();
+  state.activeWeekStart = weekStart;
+  updatePlanningWeekLabel();
   renderTimeEntries();
   renderPlanning();
   renderDashboard();
-}
-
-function updateWeekLabel() {
-  if (elements.weekLabel) {
-    elements.weekLabel.textContent = formatWeekRange(state.activeWeek);
-  }
-}
-
-function changeWeek(delta) {
-  state.activeWeek = addDays(state.activeWeek, delta * 7);
-  if (elements.timeWeek) {
-    elements.timeWeek.value = generateWeekInput(state.activeWeek);
-  }
-  renderTimeEntries();
-  renderPlanning();
-  renderDashboard();
-}
-
-function generateWeekInput(date) {
-  const week = getWeekNumber(date);
-  return `${date.getFullYear()}-W${String(week).padStart(2, '0')}`;
-}
-
-function startTimer() {
-  if (state.timer.running) return;
-  const clientId = elements.timerClient.value;
-  if (!clientId) {
-    createToast('Kies een klant om de timer te starten', 'error');
-    return;
-  }
-  state.timer.running = true;
-  state.timer.startedAt = new Date();
-  state.timer.clientId = clientId;
-  state.timer.description = elements.timerDescription.value.trim();
-  elements.startTimer.disabled = true;
-  elements.stopTimer.disabled = false;
-  elements.resetTimer.disabled = false;
-  elements.timerFeedback.classList.add('hidden');
-  updateTimerDisplay();
-  state.timerInterval = setInterval(updateTimerDisplay, 1000);
-}
-
-function stopTimer() {
-  if (!state.timer.running) return;
-  clearInterval(state.timerInterval);
-  const end = new Date();
-  const duration = Math.round((end.getTime() - state.timer.startedAt.getTime()) / 1000);
-  state.timer.running = false;
-  elements.startTimer.disabled = false;
-  elements.stopTimer.disabled = true;
-  elements.timerFeedback.textContent = `Gelogd: ${formatDuration(duration)} voor ${
-    getClientName(state.timer.clientId) || 'onbekende klant'
-  }`;
-  elements.timerFeedback.classList.remove('hidden');
-  saveTimeEntry({
-    clientId: state.timer.clientId,
-    note: state.timer.description,
-    start: state.timer.startedAt,
-    end,
-  });
-}
-
-function resetTimer() {
-  clearInterval(state.timerInterval);
-  state.timer.running = false;
-  state.timer.startedAt = null;
-  state.timer.clientId = null;
-  state.timer.description = '';
-  elements.timerDisplay.textContent = '00:00:00';
-  elements.startTimer.disabled = false;
-  elements.stopTimer.disabled = true;
-  elements.resetTimer.disabled = true;
-  elements.timerDescription.value = '';
-}
-
-function updateTimerDisplay() {
-  if (!state.timer.running || !state.timer.startedAt) return;
-  const now = new Date();
-  const seconds = Math.round((now.getTime() - state.timer.startedAt.getTime()) / 1000);
-  elements.timerDisplay.textContent = formatDuration(seconds);
-}
-
-function getClientRate(clientId) {
-  if (!clientId) return null;
-  const id = Number(clientId);
-  return state.clients.find((client) => Number(client.id) === id)?.hourly_rate || null;
-}
-async function saveTimeEntry({ clientId, note, start, end }) {
-  if (!state.user) return;
-  const payload = {
-    user_id: state.user.id,
-    client_id: clientId ? Number(clientId) : null,
-    started_at: start.toISOString(),
-    ended_at: end.toISOString(),
-    note: note || null,
-  };
-  try {
-    const { error } = await getSupabase().from('time_entries').insert(payload);
-    if (error) throw error;
-    createToast('Tijd geregistreerd', 'success');
-    await loadTimeEntries();
-    renderTimeEntries();
-    renderDashboard();
-    updateClientSelects();
-  } catch (error) {
-    console.error(error);
-    createToast('Timer kon niet worden opgeslagen', 'error');
-  }
-}
-
-async function handleManualTimeSubmit(event) {
-  event.preventDefault();
-  if (!state.user) return;
-  const clientId = elements.manualClient.value;
-  const startValue = elements.manualStart.value;
-  const endValue = elements.manualEnd.value;
-  if (!clientId || !startValue || !endValue) {
-    createToast('Vul klant, start- en eindtijd in', 'error');
-    return;
-  }
-  const startDate = new Date(startValue);
-  const endDate = new Date(endValue);
-  if (endDate <= startDate) {
-    createToast('Eindtijd moet na starttijd liggen', 'error');
-    return;
-  }
-  await saveTimeEntry({
-    clientId,
-    note: elements.manualDescription.value.trim(),
-    start: startDate,
-    end: endDate,
-  });
-  elements.manualForm.reset();
-  const now = new Date();
-  elements.manualStart.value = getISODateTimeLocal(new Date(now.getTime() - 60 * 60 * 1000));
-  elements.manualEnd.value = getISODateTimeLocal(now);
-}
-
-function getClientName(id) {
-  if (id == null) return 'Onbekende klant';
-  const target = state.clients.find((client) => Number(client.id) === Number(id));
-  return target?.name || 'Onbekende klant';
 }
 
 function renderTimeEntries() {
-  const start = startOfWeek(state.activeWeek);
-  const end = endOfWeek(state.activeWeek);
+  const start = getWeekStart(state.activeWeekStart);
+  const end = getWeekEnd(state.activeWeekStart);
   const entries = state.timeEntries.filter((entry) => {
-    const date = new Date(entry.started_at);
+    const date = new Date(entry.start_time);
     return date >= start && date <= end;
   });
   elements.timeEmpty?.classList.toggle('hidden', entries.length > 0);
-  elements.timeTable.innerHTML = entries
-    .map(
-      (entry) => `
-        <tr data-id="${entry.id}">
-          <td>${formatDate(entry.started_at)}</td>
-          <td>${entry.client?.name || getClientName(entry.client_id)}</td>
-          <td>${entry.note || '—'}</td>
-          <td>${formatDuration(entry.seconds)}</td>
-          <td class="table-actions">
-            <button type="button" class="ghost-button" data-action="delete">Verwijder</button>
-          </td>
-        </tr>`
-    )
+  elements.timeEntries.innerHTML = entries
+    .map((entry) => `
+      <tr data-id="${entry.id}">
+        <td>${formatDate(entry.start_time)}</td>
+        <td>${entry.client?.name || getClientName(entry.client_id)}</td>
+        <td>${entry.description || '—'}</td>
+        <td>${formatDuration(entry.duration_seconds)}</td>
+        <td>${entry.billable ? 'Ja' : 'Nee'}</td>
+        <td class="table-actions">
+          <button class="ghost-button" data-action="delete">Verwijder</button>
+        </td>
+      </tr>`)
     .join('');
 }
 
-async function handleTimeTableClick(event) {
+async function handleTimeEntriesClick(event) {
   const row = event.target.closest('tr[data-id]');
   if (!row) return;
-  if (!event.target.matches('[data-action="delete"]')) return;
-  if (!confirm('Verwijder deze tijdregistratie?')) return;
-  try {
-    const { error } = await getSupabase()
-      .from('time_entries')
-      .delete()
-      .eq('id', Number(row.dataset.id))
-      .eq('user_id', state.user.id);
-    if (error) throw error;
-    createToast('Urenregel verwijderd', 'success');
-    await loadTimeEntries();
-    renderTimeEntries();
-    renderDashboard();
-  } catch (error) {
-    console.error(error);
-    createToast('Verwijderen mislukt', 'error');
+  if (event.target.matches('[data-action="delete"]')) {
+    if (!confirm('Verwijder deze tijdregistratie?')) return;
+    try {
+      const { error } = await getSupabase().from('time_entries').delete().eq('id', row.dataset.id);
+      if (error) throw error;
+      createToast('Boeking verwijderd');
+      await loadTimeEntries();
+      renderTimeEntries();
+      renderDashboard();
+    } catch (error) {
+      console.error(error);
+      createToast('Verwijderen mislukt', 'error');
+    }
   }
 }
 
 function exportWeekCsv() {
-  const start = startOfWeek(state.activeWeek);
-  const end = endOfWeek(state.activeWeek);
+  const start = getWeekStart(state.activeWeekStart);
+  const end = getWeekEnd(state.activeWeekStart);
   const entries = state.timeEntries.filter((entry) => {
-    const date = new Date(entry.started_at);
+    const date = new Date(entry.start_time);
     return date >= start && date <= end;
   });
-  if (!entries.length) {
-    createToast('Geen uren om te exporteren', 'error');
-    return;
-  }
   const rows = [
-    ['Datum', 'Klant', 'Notitie', 'Start', 'Einde', 'Duur (sec)'],
+    ['Datum', 'Klant', 'Omschrijving', 'Start', 'Einde', 'Duur (sec)', 'Billable'],
     ...entries.map((entry) => [
-      formatDate(entry.started_at),
+      formatDate(entry.start_time),
       entry.client?.name || getClientName(entry.client_id),
-      entry.note || '',
-      formatDateTime(entry.started_at),
-      formatDateTime(entry.ended_at),
-      entry.seconds,
+      entry.description || '',
+      formatDateTime(entry.start_time),
+      formatDateTime(entry.end_time),
+      entry.duration_seconds,
+      entry.billable ? 'Ja' : 'Nee',
     ]),
   ];
-  downloadFile(`uren-${getISODate(start)}.csv`, toCSV(rows), 'text/csv');
-  createToast('Weekexport aangemaakt', 'success');
+  const csv = toCSV(rows);
+  downloadFile(`uren-${getISODate(start)}.csv`, csv, 'text/csv');
 }
 
 async function handlePlanningSubmit(event) {
   event.preventDefault();
-  if (!state.user) return;
-  const title = elements.planningTitleInput.value.trim();
-  const start = elements.planningStart.value;
-  const end = elements.planningEnd.value;
-  if (!title || !start || !end) {
-    createToast('Vul titel, start en einde in', 'error');
+  const payload = {
+    title: elements.planningTitle.value.trim(),
+    start_time: new Date(elements.planningStart.value).toISOString(),
+    end_time: new Date(elements.planningEnd.value).toISOString(),
+    location: elements.planningLocation.value.trim() || null,
+    external_url: elements.planningLink.value.trim() || null,
+    notes: elements.planningNotes.value.trim() || null,
+  };
+  if (!payload.title || !payload.start_time || !payload.end_time) {
+    createToast('Vul titel en tijden in', 'error');
     return;
   }
-  const payload = {
-    user_id: state.user.id,
-    client_id: elements.planningClient.value ? Number(elements.planningClient.value) : null,
-    title,
-    starts_at: new Date(start).toISOString(),
-    ends_at: new Date(end).toISOString(),
-    location: elements.planningLocation.value.trim() || null,
-    link: elements.planningLink.value.trim() || null,
-  };
   try {
-    const { error } = await getSupabase().from('planning_events').insert(payload);
+    const { error } = await getSupabase().from('planning_entries').insert(payload);
     if (error) throw error;
-    createToast('Planning toegevoegd', 'success');
+    createToast('Planning toegevoegd');
     elements.planningForm.reset();
-    await loadPlanning();
+    await loadPlanningEntries();
     renderPlanning();
     renderDashboard();
   } catch (error) {
@@ -938,64 +848,75 @@ async function handlePlanningSubmit(event) {
 }
 
 function renderPlanning() {
-  updateWeekLabel();
-  const start = startOfWeek(state.activeWeek);
-  const days = Array.from({ length: 7 }, (_, index) => addDays(start, index));
-  const events = state.planning.filter((event) => {
-    const date = new Date(event.starts_at);
-    return date >= start && date <= endOfWeek(state.activeWeek);
+  updatePlanningWeekLabel();
+  const start = getWeekStart(state.activeWeekStart);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
   });
-  elements.planningGrid.innerHTML = days
+  const events = state.planningEntries.filter((entry) => {
+    const date = new Date(entry.start_time);
+    return date >= getWeekStart(state.activeWeekStart) && date <= getWeekEnd(state.activeWeekStart);
+  });
+  elements.weekGrid.innerHTML = days
     .map((day) => {
       const dayEvents = events.filter((event) => {
-        const date = new Date(event.starts_at);
-        return (
-          date.getFullYear() === day.getFullYear() &&
-          date.getMonth() === day.getMonth() &&
-          date.getDate() === day.getDate()
-        );
+        const startDate = new Date(event.start_time);
+        return startDate.getDate() === day.getDate() && startDate.getMonth() === day.getMonth();
       });
-      const list = dayEvents
-        .map(
-          (event) => `
-            <li data-id="${event.id}">
-              <strong>${event.title}</strong>
-              <span>${formatDateTime(event.starts_at)} – ${formatDateTime(event.ends_at)}</span>
+      const imported = state.importedEvents.filter((event) => {
+        const startDate = new Date(event.start);
+        return startDate >= day && startDate < new Date(day.getTime() + 86400000);
+      });
+      const allEvents = [...dayEvents, ...imported];
+      const eventItems = allEvents
+        .map((event) => {
+          const startTime = event.start_time || event.start;
+          const endTime = event.end_time || event.end;
+          const isImported = Boolean(event.source === 'import');
+          return `
+            <li data-id="${event.id || ''}" data-imported="${isImported}">
+              <strong>${event.title || 'Zonder titel'}</strong>
+              <span>${formatDateTime(startTime)} – ${formatDateTime(endTime)}</span>
               ${event.location ? `<span>📍 ${event.location}</span>` : ''}
-              ${event.link ? `<span>🔗 <a href="${event.link}" target="_blank">Link</a></span>` : ''}
-              <div class="event-actions">
-                <button type="button" class="ghost-button" data-action="remove">Verwijder</button>
-              </div>
-            </li>`
-        )
+              ${event.external_url || event.url ? `<span>🔗 <a href="${
+                event.external_url || event.url
+              }" target="_blank">Link</a></span>` : ''}
+              ${!isImported
+                ? '<div class="event-actions"><button class="ghost-button" data-action="remove">Verwijder</button></div>'
+                : ''}
+            </li>`;
+        })
         .join('');
       return `
-        <div class="day" data-date="${day.toISOString()}">
+        <div class="week-column" data-date="${day.toISOString()}">
           <header>
-            <div>${day.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric' })}</div>
-            <span class="muted">${dayEvents.length}</span>
+            <div>${day.toLocaleDateString('nl-NL', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            })}</div>
+            <span>${allEvents.length}</span>
           </header>
-          <ul>${list || '<li>Geen afspraken</li>'}</ul>
+          <ul>${eventItems || '<li>Geen afspraken</li>'}</ul>
         </div>`;
     })
     .join('');
 }
 
-async function handlePlanningGridClick(event) {
-  const button = event.target.closest('[data-action="remove"]');
-  if (!button) return;
-  const item = button.closest('li[data-id]');
+async function handleWeekGridClick(event) {
+  if (!event.target.matches('[data-action="remove"]')) return;
+  const item = event.target.closest('li[data-id]');
   if (!item) return;
-  if (!confirm('Verwijder dit agendaitem?')) return;
+  const id = item.dataset.id;
+  if (!id) return;
+  if (!confirm('Verwijder deze planning?')) return;
   try {
-    const { error } = await getSupabase()
-      .from('planning_events')
-      .delete()
-      .eq('id', Number(item.dataset.id))
-      .eq('user_id', state.user.id);
+    const { error } = await getSupabase().from('planning_entries').delete().eq('id', id);
     if (error) throw error;
-    createToast('Planning verwijderd', 'success');
-    await loadPlanning();
+    createToast('Planning verwijderd');
+    await loadPlanningEntries();
     renderPlanning();
     renderDashboard();
   } catch (error) {
@@ -1004,30 +925,30 @@ async function handlePlanningGridClick(event) {
   }
 }
 
-function exportIcsFile() {
-  const start = startOfWeek(state.activeWeek);
-  const end = endOfWeek(state.activeWeek);
-  const events = state.planning.filter((entry) => {
-    const date = new Date(entry.starts_at);
-    return date >= start && date <= end;
-  });
+function exportWeekIcs() {
+  const start = getWeekStart(state.activeWeekStart);
+  const end = getWeekEnd(state.activeWeekStart);
+  const events = state.planningEntries
+    .filter((entry) => {
+      const date = new Date(entry.start_time);
+      return date >= start && date <= end;
+    })
+    .map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      start: entry.start_time,
+      end: entry.end_time,
+      description: entry.notes,
+      location: entry.location,
+      url: entry.external_url,
+    }));
   if (!events.length) {
-    createToast('Geen afspraken om te exporteren', 'error');
+    createToast('Geen events om te exporteren', 'error');
     return;
   }
-  const ics = buildICS(
-    events.map((event) => ({
-      id: event.id,
-      title: event.title,
-      start: event.starts_at,
-      end: event.ends_at,
-      description: event.location || '',
-      location: event.location,
-      url: event.link,
-    }))
-  );
+  const ics = buildICS(events);
   downloadFile(`planning-${getISODate(start)}.ics`, ics, 'text/calendar');
-  createToast('ICS-bestand aangemaakt', 'success');
+  createToast('ICS-bestand aangemaakt');
 }
 
 async function importIcsFile(event) {
@@ -1036,360 +957,44 @@ async function importIcsFile(event) {
   const text = await file.text();
   const events = parseICS(text);
   if (!events.length) {
-    createToast('Geen events gevonden in bestand', 'error');
+    createToast('Geen agenda-items gevonden in bestand', 'error');
     return;
   }
   const payloads = events
     .filter((event) => event.start)
     .map((event) => ({
-      user_id: state.user.id,
-      title: event.title || 'Agenda item',
-      client_id: null,
-      starts_at: new Date(event.start).toISOString(),
-      ends_at: event.end ? new Date(event.end).toISOString() : new Date(event.start).toISOString(),
+      title: event.title || 'Agendaitem',
+      start_time: new Date(event.start).toISOString(),
+      end_time: event.end ? new Date(event.end).toISOString() : new Date(event.start).toISOString(),
       location: event.location || null,
-      link: event.url || null,
+      notes: event.description || null,
+      external_url: event.url || null,
+      source: 'import',
     }));
   try {
-    const { error } = await getSupabase().from('planning_events').insert(payloads);
+    const { error } = await getSupabase().from('planning_entries').insert(payloads);
     if (error) throw error;
-    createToast(`${payloads.length} agenda-items geïmporteerd`, 'success');
-    await loadPlanning();
+    createToast(`${payloads.length} agenda-items geïmporteerd`);
+    await loadPlanningEntries();
     renderPlanning();
     renderDashboard();
   } catch (error) {
     console.error(error);
     createToast('Importeren mislukt', 'error');
-  } finally {
-    elements.importIcs.value = '';
-  }
-}
-function openInvoiceModal(invoice = null) {
-  elements.invoiceForm.reset();
-  elements.lineItemsContainer.innerHTML = '';
-  elements.invoiceId.value = invoice?.id || '';
-  elements.invoiceClient.value = invoice?.client_id || '';
-  elements.invoiceNumber.value = invoice?.number || generateInvoiceNumber();
-  elements.invoiceIssue.value = invoice?.issue_date?.slice(0, 10) || getISODate(new Date());
-  const defaultDue = (() => {
-    const due = new Date();
-    due.setDate(due.getDate() + 14);
-    return getISODate(due);
-  })();
-  elements.invoiceDue.value = invoice?.due_date?.slice(0, 10) || defaultDue;
-  elements.invoiceVat.value = invoice?.vat_rate ?? 21;
-  elements.invoicePaid.checked = Boolean(invoice?.paid);
-  (invoice?.items || []).forEach((item) =>
-    addLineItem({
-      description: item.description,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-    })
-  );
-  updateInvoiceSummary();
-  elements.invoiceModalTitle.textContent = invoice ? 'Factuur bewerken' : 'Nieuwe factuur';
-  openModal(elements.invoiceModal);
-}
-
-function addLineItem(data = {}) {
-  const template = elements.lineItemTemplate.content.cloneNode(true);
-  const item = template.querySelector('.line-item');
-  item.querySelector('[data-field="description"]').value = data.description || '';
-  item.querySelector('[data-field="quantity"]').value = data.quantity ?? 1;
-  item.querySelector('[data-field="unit_price"]').value = data.unit_price ?? '';
-  updateLineItemAmount(item);
-  item.addEventListener('input', () => updateLineItemAmount(item));
-  item.querySelector('[data-action="remove"]').addEventListener('click', () => {
-    item.remove();
-    updateInvoiceSummary();
-  });
-  elements.lineItemsContainer.appendChild(item);
-  updateInvoiceSummary();
-}
-
-function updateLineItemAmount(item) {
-  const quantity = Number(item.querySelector('[data-field="quantity"]').value) || 0;
-  const rate = Number(item.querySelector('[data-field="unit_price"]').value) || 0;
-  item.querySelector('[data-field="amount"]').value = formatCurrency(quantity * rate);
-  updateInvoiceSummary();
-}
-
-function updateInvoiceSummary() {
-  const items = Array.from(elements.lineItemsContainer.querySelectorAll('.line-item'));
-  const subtotal = items.reduce((sum, item) => {
-    const quantity = Number(item.querySelector('[data-field="quantity"]').value) || 0;
-    const rate = Number(item.querySelector('[data-field="unit_price"]').value) || 0;
-    return sum + quantity * rate;
-  }, 0);
-  const vatRate = Number(elements.invoiceVat?.value ?? 21);
-  const vatAmount = subtotal * (vatRate / 100);
-  elements.invoiceTotal.textContent = `${formatCurrency(subtotal + vatAmount)} (incl. btw)`;
-}
-
-function generateInvoiceNumber() {
-  const date = new Date();
-  return `INV-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(
-    date.getDate()
-  ).padStart(2, '0')}-${Math.floor(Math.random() * 900 + 100)}`;
-}
-
-async function handleInvoiceSubmit(event) {
-  event.preventDefault();
-  if (!state.user) return;
-  const items = Array.from(elements.lineItemsContainer.querySelectorAll('.line-item'));
-  if (!items.length) {
-    createToast('Voeg minimaal één factuurregel toe', 'error');
-    return;
-  }
-  const subtotal = items.reduce((sum, item) => {
-    const quantity = Number(item.querySelector('[data-field="quantity"]').value) || 0;
-    const rate = Number(item.querySelector('[data-field="unit_price"]').value) || 0;
-    return sum + quantity * rate;
-  }, 0);
-  const vatRate = Number(elements.invoiceVat.value || 0);
-  const payload = {
-    user_id: state.user.id,
-    client_id: elements.invoiceClient.value ? Number(elements.invoiceClient.value) : null,
-    number: elements.invoiceNumber.value.trim(),
-    issue_date: elements.invoiceIssue.value,
-    due_date: elements.invoiceDue.value || null,
-    total_ex_vat: subtotal,
-    vat_rate: vatRate,
-    paid: elements.invoicePaid.checked,
-  };
-  if (!payload.number || !payload.client_id) {
-    createToast('Kies een klant en factuurnummer', 'error');
-    return;
-  }
-  try {
-    let invoiceId = elements.invoiceId.value || null;
-    if (invoiceId) {
-      const { error } = await getSupabase()
-        .from('invoices')
-        .update(payload)
-        .eq('id', invoiceId)
-        .eq('user_id', state.user.id);
-      if (error) throw error;
-      const { error: deleteItemsError } = await getSupabase()
-        .from('invoice_items')
-        .delete()
-        .eq('invoice_id', invoiceId);
-      if (deleteItemsError) throw deleteItemsError;
-    } else {
-      const { data, error } = await getSupabase()
-        .from('invoices')
-        .insert(payload)
-        .select('id')
-        .single();
-      if (error) throw error;
-      invoiceId = data.id;
-    }
-    const itemPayloads = items.map((item) => ({
-      invoice_id: invoiceId,
-      description: item.querySelector('[data-field="description"]').value,
-      quantity: Number(item.querySelector('[data-field="quantity"]').value) || 0,
-      unit_price: Number(item.querySelector('[data-field="unit_price"]').value) || 0,
-    }));
-    if (itemPayloads.length) {
-      const { error: insertItemsError } = await getSupabase().from('invoice_items').insert(itemPayloads);
-      if (insertItemsError) throw insertItemsError;
-    }
-    createToast('Factuur opgeslagen', 'success');
-    closeModal(elements.invoiceModal);
-    await loadInvoices();
-    renderInvoices();
-    renderDashboard();
-  } catch (error) {
-    console.error(error);
-    createToast('Opslaan van factuur mislukt', 'error');
   }
 }
 
-function renderInvoices() {
-  const filter = elements.invoiceFilter.value;
-  const invoices = state.invoices.filter((invoice) => {
-    if (filter === 'all') return true;
-    if (filter === 'paid') return invoice.paid;
-    if (filter === 'open') return !invoice.paid;
-    return true;
-  });
-  elements.invoiceEmpty?.classList.toggle('hidden', invoices.length > 0);
-  elements.invoiceTable.innerHTML = invoices
-    .map(
-      (invoice) => `
-        <tr data-id="${invoice.id}">
-          <td>${invoice.number}</td>
-          <td>${invoice.client?.name || getClientName(invoice.client_id)}</td>
-          <td>${invoice.issue_date ? formatDate(invoice.issue_date) : '—'}</td>
-          <td>${invoice.due_date ? formatDate(invoice.due_date) : '—'}</td>
-          <td>${formatCurrency(calculateInvoiceTotal(invoice))}</td>
-          <td><span class="badge-status ${invoice.paid ? 'paid' : 'open'}">${invoice.paid ? 'Betaald' : 'Openstaand'}</span></td>
-          <td class="table-actions">
-            <button type="button" class="ghost-button" data-action="edit">Wijzig</button>
-            <button type="button" class="ghost-button" data-action="pdf">PDF</button>
-            <button type="button" class="ghost-button" data-action="email">E-mail</button>
-            <button type="button" class="ghost-button" data-action="delete">Verwijder</button>
-          </td>
-        </tr>`
-    )
-    .join('');
-}
-
-function calculateInvoiceTotal(invoice) {
-  const subtotal = Number(invoice.total_ex_vat || 0);
-  const vatRate = Number(invoice.vat_rate || 0);
-  return subtotal * (1 + vatRate / 100);
-}
-
-async function handleInvoiceTableClick(event) {
-  const row = event.target.closest('tr[data-id]');
-  if (!row) return;
-  const invoiceId = Number(row.dataset.id);
-  const invoice = state.invoices.find((item) => Number(item.id) === invoiceId);
-  if (!invoice) return;
-  if (event.target.matches('[data-action="edit"]')) {
-    openInvoiceModal(invoice);
-  }
-  if (event.target.matches('[data-action="pdf"]')) {
-    generateInvoicePdf(invoice.id);
-  }
-  if (event.target.matches('[data-action="email"]')) {
-    openInvoiceEmailModal(invoice);
-  }
-  if (event.target.matches('[data-action="delete"]')) {
-    if (!confirm('Verwijder deze factuur?')) return;
-    try {
-      const { error } = await getSupabase()
-        .from('invoices')
-        .delete()
-        .eq('id', invoice.id)
-        .eq('user_id', state.user.id);
-      if (error) throw error;
-      await getSupabase().from('invoice_items').delete().eq('invoice_id', invoice.id);
-      createToast('Factuur verwijderd', 'success');
-      await loadInvoices();
-      renderInvoices();
-      renderDashboard();
-    } catch (error) {
-      console.error(error);
-      createToast('Verwijderen mislukt', 'error');
-    }
-  }
-}
-
-async function buildInvoicePdf(invoiceId) {
-  const { data, error } = await getSupabase()
-    .from('invoices')
-    .select('*, client:clients(*), items:invoice_items(*)')
-    .eq('id', invoiceId)
-    .eq('user_id', state.user.id)
-    .single();
-  if (error) throw error;
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('Factuur', 20, 24);
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Factuurnummer: ${data.number}`, 20, 36);
-  doc.text(`Factuurdatum: ${formatDate(data.issue_date)}`, 20, 44);
-  doc.text(`Vervaldatum: ${formatDate(data.due_date)}`, 20, 52);
-  doc.text('Factuur voor:', 20, 68);
-  doc.text(data.client?.name || 'Onbekende klant', 20, 76);
-  if (data.client?.email) {
-    doc.text(data.client.email, 20, 84);
-  }
-  if (data.client?.phone) {
-    doc.text(data.client.phone, 20, 90);
-  }
-  const startY = 108;
-  doc.setFillColor(230);
-  doc.rect(20, startY, 170, 8, 'F');
-  doc.text('Omschrijving', 22, startY + 6);
-  doc.text('Aantal', 108, startY + 6);
-  doc.text('Tarief', 138, startY + 6);
-  doc.text('Totaal', 160, startY + 6);
-  let currentY = startY + 14;
-  data.items.forEach((item) => {
-    const total = (item.quantity || 0) * (item.unit_price || 0);
-    doc.text(item.description || '—', 22, currentY);
-    doc.text(String(item.quantity ?? 0), 108, currentY);
-    doc.text(formatCurrency(item.unit_price || 0), 138, currentY);
-    doc.text(formatCurrency(total), 160, currentY);
-    currentY += 8;
-  });
-  const subtotal = Number(data.total_ex_vat || 0);
-  const vatRate = Number(data.vat_rate || 0);
-  const vatAmount = subtotal * (vatRate / 100);
-  const totalIncl = subtotal + vatAmount;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Subtotaal', 138, currentY + 6);
-  doc.text(formatCurrency(subtotal), 160, currentY + 6);
-  doc.text(`BTW (${vatRate.toFixed(1)}%)`, 138, currentY + 14);
-  doc.text(formatCurrency(vatAmount), 160, currentY + 14);
-  doc.text('Totaal', 138, currentY + 22);
-  doc.text(formatCurrency(totalIncl), 160, currentY + 22);
-  return { doc, invoice: data };
-}
-
-async function generateInvoicePdf(invoiceId) {
-  try {
-    const { doc, invoice } = await buildInvoicePdf(invoiceId);
-    const blob = doc.output('blob');
-    downloadFile(`factuur-${invoice.number}.pdf`, blob, 'application/pdf');
-    createToast('Factuur PDF aangemaakt', 'success');
-  } catch (error) {
-    console.error(error);
-    createToast('Kon factuur niet genereren', 'error');
-  }
-}
-function openInvoiceEmailModal(invoice) {
-  elements.invoiceEmailForm.reset();
-  elements.emailInvoiceId.value = invoice.id;
-  elements.emailRecipient.value = invoice.client?.email || '';
-  elements.emailSubject.value = `Factuur ${invoice.number}`;
-  elements.emailBody.value = 'Beste klant,\n\nZie bijgevoegd de factuur.\n\nMet vriendelijke groet,';
-  openModal(elements.invoiceEmailModal);
-}
-
-async function handleInvoiceEmailSubmit(event) {
-  event.preventDefault();
-  if (!state.supabase) return;
-  const invoiceId = elements.emailInvoiceId.value;
-  try {
-    const { doc, invoice } = await buildInvoicePdf(invoiceId);
-    const pdfData = doc.output('datauristring');
-    const pdfBase64 = pdfData.split(',')[1];
-    const filename = `factuur-${invoice.number}.pdf`;
-    const { error } = await getSupabase().functions.invoke('send-invoice', {
-      body: {
-        invoiceId,
-        to: elements.emailRecipient.value,
-        subject: elements.emailSubject.value,
-        message: elements.emailBody.value,
-        pdfBase64,
-        filename,
-      },
-    });
-    if (error) throw error;
-    createToast('Factuur verzonden', 'success');
-    closeModal(elements.invoiceEmailModal);
-  } catch (error) {
-    console.error(error);
-    createToast(error.message || 'Versturen mislukt', 'error');
-  }
-}
-
-function openDrawer() {
+function handleLoadTimeEntries() {
   if (!elements.invoiceClient.value) {
     createToast('Kies eerst een klant', 'error');
     return;
   }
-  elements.drawerTable.innerHTML = '';
-  elements.drawerStart.value = '';
-  elements.drawerEnd.value = '';
-  openModal(elements.drawer);
+  toggleDrawer(true);
+}
+
+function toggleDrawer(open) {
+  elements.drawer.classList.toggle('hidden', !open);
+  elements.modalBackdrop?.classList.toggle('hidden', !open);
 }
 
 async function handleDrawerFilterSubmit(event) {
@@ -1399,18 +1004,16 @@ async function handleDrawerFilterSubmit(event) {
     createToast('Kies eerst een klant', 'error');
     return;
   }
+  const start = elements.drawerStart.value ? new Date(elements.drawerStart.value) : null;
+  const end = elements.drawerEnd.value ? new Date(elements.drawerEnd.value) : null;
   let query = getSupabase()
     .from('time_entries')
     .select('*')
-    .eq('user_id', state.user.id)
-    .eq('client_id', Number(clientId))
-    .order('started_at', { ascending: false });
-  if (elements.drawerStart.value) {
-    query = query.gte('started_at', new Date(elements.drawerStart.value).toISOString());
-  }
-  if (elements.drawerEnd.value) {
-    query = query.lte('started_at', new Date(elements.drawerEnd.value).toISOString());
-  }
+    .eq('client_id', clientId)
+    .is('synced_invoice_id', null)
+    .order('start_time', { ascending: false });
+  if (start) query = query.gte('start_time', start.toISOString());
+  if (end) query = query.lte('end_time', end.toISOString());
   try {
     const { data, error } = await query;
     if (error) throw error;
@@ -1428,9 +1031,9 @@ function renderDrawerEntries() {
       (entry) => `
         <tr>
           <td><input type="checkbox" value="${entry.id}" /></td>
-          <td>${formatDate(entry.started_at)}</td>
-          <td>${entry.note || '—'}</td>
-          <td>${formatDuration(entry.seconds)}</td>
+          <td>${formatDate(entry.start_time)}</td>
+          <td>${entry.description || '—'}</td>
+          <td>${formatDuration(entry.duration_seconds)}</td>
         </tr>`
     )
     .join('');
@@ -1442,58 +1045,359 @@ function addSelectedTimeEntries() {
     createToast('Selecteer minimaal één urenregel', 'error');
     return;
   }
-  selected
-    .map((input) => state.drawerEntries.find((entry) => String(entry.id) === input.value))
-    .filter(Boolean)
-    .forEach((entry) => {
-      addLineItem({
-        description: entry.note || `Uren ${formatDate(entry.started_at)}`,
-        quantity: Number(((entry.seconds || 0) / 3600).toFixed(2)),
-        unit_price: getClientRate(entry.client_id) || 0,
-      });
+  const entries = selected
+    .map((input) => state.drawerEntries.find((entry) => entry.id === input.value))
+    .filter(Boolean);
+  entries.forEach((entry) => {
+    addLineItem({
+      description: entry.description || `Uren ${formatDate(entry.start_time)}`,
+      quantity: Number((entry.duration_seconds / 3600).toFixed(2)),
+      unit_price: entry.hourly_rate || getClientDefaultRate(entry.client_id),
+      time_entry_id: entry.id,
     });
-  closeModal(elements.drawer);
+  });
+  toggleDrawer(false);
+}
+
+function addLineItem(data = {}) {
+  const template = elements.lineItemTemplate.content.cloneNode(true);
+  const lineItem = template.querySelector('.line-item');
+  lineItem.querySelector('[data-field="description"]').value = data.description || '';
+  lineItem.querySelector('[data-field="quantity"]').value = data.quantity ?? 1;
+  lineItem.querySelector('[data-field="unit_price"]').value = data.unit_price ?? '';
+  lineItem.querySelector('[data-field="time_entry_id"]').value = data.time_entry_id || '';
+  updateLineItemAmount(lineItem);
+  lineItem.addEventListener('input', () => updateLineItemAmount(lineItem));
+  lineItem.querySelector('[data-action="remove"]').addEventListener('click', () => {
+    lineItem.remove();
+    updateInvoiceSummary();
+  });
+  elements.lineItemsContainer.appendChild(lineItem);
+  updateInvoiceSummary();
+}
+
+function updateLineItemAmount(lineItem) {
+  const quantity = Number(lineItem.querySelector('[data-field="quantity"]').value) || 0;
+  const unitPrice = Number(lineItem.querySelector('[data-field="unit_price"]').value) || 0;
+  const amount = quantity * unitPrice;
+  lineItem.querySelector('[data-field="amount"]').value = formatCurrency(amount);
+  updateInvoiceSummary();
+}
+
+function updateInvoiceSummary() {
+  const items = Array.from(elements.lineItemsContainer.querySelectorAll('.line-item'));
+  const total = items.reduce((sum, item) => {
+    const quantity = Number(item.querySelector('[data-field="quantity"]').value) || 0;
+    const unitPrice = Number(item.querySelector('[data-field="unit_price"]').value) || 0;
+    return sum + quantity * unitPrice;
+  }, 0);
+  elements.invoiceTotal.textContent = formatCurrency(total);
+}
+
+function getClientDefaultRate(clientId) {
+  return state.clients.find((client) => client.id === clientId)?.hourly_rate || 0;
+}
+
+async function handleInvoiceSubmit(event) {
+  event.preventDefault();
+  const items = Array.from(elements.lineItemsContainer.querySelectorAll('.line-item'));
+  if (!items.length) {
+    createToast('Voeg minimaal één factuurregel toe', 'error');
+    return;
+  }
+  const total = items.reduce((sum, item) => {
+    const quantity = Number(item.querySelector('[data-field="quantity"]').value) || 0;
+    const unitPrice = Number(item.querySelector('[data-field="unit_price"]').value) || 0;
+    return sum + quantity * unitPrice;
+  }, 0);
+  const invoiceId = elements.invoiceId.value;
+  const payload = {
+    client_id: elements.invoiceClient.value,
+    invoice_number: elements.invoiceNumber.value.trim(),
+    issue_date: elements.invoiceIssueDate.value,
+    due_date: elements.invoiceDueDate.value,
+    status: elements.invoiceStatus.value,
+    notes: elements.invoiceNotes.value.trim() || null,
+    total_amount: total,
+  };
+  try {
+    let id = invoiceId;
+    if (invoiceId) {
+      const { error } = await getSupabase().from('invoices').update(payload).eq('id', invoiceId);
+      if (error) throw error;
+      const { error: deleteError } = await getSupabase().from('invoice_items').delete().eq('invoice_id', invoiceId);
+      if (deleteError) throw deleteError;
+    } else {
+      const { data, error } = await getSupabase().from('invoices').insert(payload).select('id').single();
+      if (error) throw error;
+      id = data.id;
+    }
+    const itemPayloads = items.map((item) => ({
+      invoice_id: id,
+      description: item.querySelector('[data-field="description"]').value,
+      quantity: Number(item.querySelector('[data-field="quantity"]').value) || 0,
+      unit_price: Number(item.querySelector('[data-field="unit_price"]').value) || 0,
+      time_entry_id: item.querySelector('[data-field="time_entry_id"]').value || null,
+    }));
+    const { error: itemsError } = await getSupabase().from('invoice_items').insert(itemPayloads);
+    if (itemsError) throw itemsError;
+    createToast('Factuur opgeslagen');
+    closeModal(elements.invoiceModal);
+    await loadInvoices();
+    renderInvoices();
+    renderDashboard();
+  } catch (error) {
+    console.error(error);
+    createToast('Opslaan van factuur mislukt', 'error');
+  }
+}
+
+function openInvoiceModal(invoice = null) {
+  elements.invoiceForm.reset();
+  elements.lineItemsContainer.innerHTML = '';
+  elements.invoiceId.value = invoice?.id || '';
+  elements.invoiceModal.querySelector('#invoice-modal-title').textContent = invoice
+    ? 'Factuur bewerken'
+    : 'Nieuwe factuur';
+  elements.invoiceClient.value = invoice?.client_id || '';
+  elements.invoiceNumber.value = invoice?.invoice_number || generateInvoiceNumber();
+  elements.invoiceIssueDate.value = invoice?.issue_date?.slice(0, 10) || getISODate(new Date());
+  elements.invoiceDueDate.value = invoice?.due_date?.slice(0, 10) || elements.invoiceDueDate.value;
+  elements.invoiceStatus.value = invoice?.status || 'concept';
+  elements.invoiceNotes.value = invoice?.notes || '';
+  (invoice?.items || []).forEach((item) =>
+    addLineItem({
+      description: item.description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      time_entry_id: item.time_entry_id,
+    })
+  );
+  updateInvoiceSummary();
+  openModal(elements.invoiceModal);
+}
+
+function generateInvoiceNumber() {
+  const date = new Date();
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(
+    date.getDate()
+  ).padStart(2, '0')}-${Math.floor(Math.random() * 900 + 100)}`;
+}
+
+function renderInvoices() {
+  const filter = elements.invoiceFilter.value;
+  const invoices = state.invoices.filter((invoice) => (filter === 'all' ? true : invoice.status === filter));
+  elements.invoiceEmpty?.classList.toggle('hidden', invoices.length > 0);
+  elements.invoiceTable.innerHTML = invoices
+    .map((invoice) => `
+      <tr data-id="${invoice.id}">
+        <td>${invoice.invoice_number}</td>
+        <td>${invoice.client?.name || getClientName(invoice.client_id)}</td>
+        <td>${invoice.issue_date ? formatDate(invoice.issue_date) : '—'}</td>
+        <td>${invoice.due_date ? formatDate(invoice.due_date) : '—'}</td>
+        <td>${formatCurrency(invoice.total_amount || 0)}</td>
+        <td><span class="badge-status ${invoice.status}">${statusLabel(invoice.status)}</span></td>
+        <td class="table-actions">
+          <button class="ghost-button" data-action="edit">Wijzig</button>
+          <button class="ghost-button" data-action="pdf">PDF</button>
+          <button class="ghost-button" data-action="email">E-mail</button>
+          <button class="ghost-button" data-action="delete">Verwijder</button>
+        </td>
+      </tr>`)
+    .join('');
+}
+
+async function handleInvoiceTableClick(event) {
+  const row = event.target.closest('tr[data-id]');
+  if (!row) return;
+  const invoice = state.invoices.find((inv) => inv.id === row.dataset.id);
+  if (!invoice) return;
+  if (event.target.matches('[data-action="edit"]')) {
+    openInvoiceModal(invoice);
+  }
+  if (event.target.matches('[data-action="pdf"]')) {
+    generateInvoicePdf(invoice.id);
+  }
+  if (event.target.matches('[data-action="email"]')) {
+    openInvoiceEmailModal(invoice);
+  }
+  if (event.target.matches('[data-action="delete"]')) {
+    if (!confirm('Verwijder deze factuur?')) return;
+    try {
+      const { error } = await getSupabase().from('invoices').delete().eq('id', invoice.id);
+      if (error) throw error;
+      const { error: itemsError } = await getSupabase().from('invoice_items').delete().eq('invoice_id', invoice.id);
+      if (itemsError) throw itemsError;
+      createToast('Factuur verwijderd');
+      await loadInvoices();
+      renderInvoices();
+      renderDashboard();
+    } catch (error) {
+      console.error(error);
+      createToast('Verwijderen mislukt', 'error');
+    }
+  }
+}
+
+async function generateInvoicePdf(invoiceId) {
+  try {
+    const { data, error } = await getSupabase()
+      .from('invoices')
+      .select('*, client:clients(*), items:invoice_items(*)')
+      .eq('id', invoiceId)
+      .single();
+    if (error) throw error;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const left = 20;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Factuur', left, 24);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Factuurnummer: ${data.invoice_number}`, left, 36);
+    doc.text(`Factuurdatum: ${formatDate(data.issue_date)}`, left, 44);
+    doc.text(`Vervaldatum: ${formatDate(data.due_date)}`, left, 52);
+
+    doc.text('Factuur voor:', left, 68);
+    doc.text(data.client?.name || 'Onbekende klant', left, 76);
+    if (data.client?.address) {
+      const lines = data.client.address.split('\n');
+      lines.forEach((line, index) => doc.text(line, left, 84 + index * 8));
+    }
+
+    const startY = 110;
+    doc.setFillColor(240);
+    doc.rect(left, startY, 170, 8, 'F');
+    doc.text('Omschrijving', left + 2, startY + 6);
+    doc.text('Aantal', left + 90, startY + 6);
+    doc.text('Tarief', left + 120, startY + 6);
+    doc.text('Totaal', left + 150, startY + 6);
+
+    let currentY = startY + 14;
+    data.items.forEach((item) => {
+      const total = (item.quantity || 0) * (item.unit_price || 0);
+      doc.text(item.description || '—', left + 2, currentY);
+      doc.text(String(item.quantity ?? 0), left + 90, currentY);
+      doc.text(formatCurrency(item.unit_price || 0), left + 120, currentY);
+      doc.text(formatCurrency(total), left + 150, currentY);
+      currentY += 8;
+    });
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Totaal', left + 120, currentY + 6);
+    doc.text(formatCurrency(data.total_amount || 0), left + 150, currentY + 6);
+
+    if (data.notes) {
+      doc.setFont('helvetica', 'normal');
+      doc.text('Opmerkingen:', left, currentY + 18);
+      const lines = doc.splitTextToSize(data.notes, 160);
+      doc.text(lines, left, currentY + 26);
+    }
+
+    const pdfBlob = doc.output('blob');
+    await uploadInvoicePdf(invoiceId, pdfBlob);
+    downloadFile(`factuur-${data.invoice_number}.pdf`, pdfBlob, 'application/pdf');
+    createToast('Factuur PDF aangemaakt');
+  } catch (error) {
+    console.error(error);
+    createToast('Kon factuur niet genereren', 'error');
+  }
+}
+
+async function uploadInvoicePdf(invoiceId, blob) {
+  try {
+    const path = `${invoiceId}/factuur.pdf`;
+    const { error } = await getSupabase().storage.from('invoices').upload(path, blob, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: 'application/pdf',
+    });
+    if (error) throw error;
+    await getSupabase().from('invoices').update({ pdf_path: path }).eq('id', invoiceId);
+  } catch (error) {
+    console.error(error);
+    createToast('Upload naar opslag mislukt', 'error');
+  }
+}
+
+function openInvoiceEmailModal(invoice) {
+  elements.emailInvoiceId.value = invoice.id;
+  const client = state.clients.find((c) => c.id === invoice.client_id);
+  elements.emailRecipient.value = client?.email || '';
+  elements.emailSubject.value = `Factuur ${invoice.invoice_number}`;
+  elements.emailMessage.value = `Beste ${client?.contact_name || client?.name || ''},\n\nIn de bijlage vind je factuur ${
+    invoice.invoice_number
+  }. Laat het weten als er vragen zijn.\n\nMet vriendelijke groet,\n`;
+  openModal(elements.invoiceEmailModal);
+}
+
+async function handleInvoiceEmailSubmit(event) {
+  event.preventDefault();
+  const invoiceId = elements.emailInvoiceId.value;
+  const recipient = elements.emailRecipient.value.trim();
+  if (!recipient) {
+    createToast('Vul een e-mailadres in', 'error');
+    return;
+  }
+  try {
+    const { error } = await getSupabase().functions.invoke('send-invoice', {
+      body: {
+        invoiceId,
+        to: recipient,
+        subject: elements.emailSubject.value.trim(),
+        message: elements.emailMessage.value.trim(),
+      },
+    });
+    if (error) throw error;
+    createToast('Factuur verzonden');
+    closeModal(elements.invoiceEmailModal);
+    await loadInvoices();
+    renderInvoices();
+    renderDashboard();
+  } catch (error) {
+    console.error(error);
+    createToast('Versturen via e-mail mislukt', 'error');
+  }
 }
 
 function openTaskModal(task = null) {
   elements.taskForm.reset();
   elements.taskId.value = task?.id || '';
+  elements.taskModal.querySelector('#task-modal-title').textContent = task
+    ? 'Taak bewerken'
+    : 'Nieuwe taak';
   elements.taskTitle.value = task?.title || '';
-  elements.taskDeadline.value = task?.due_date || '';
-  elements.taskPriority.value = String(task?.priority ?? 2);
-  elements.taskDone.checked = Boolean(task?.done);
-  elements.taskModalTitle.textContent = task ? 'Taak bewerken' : 'Nieuwe taak';
+  elements.taskDescription.value = task?.description || '';
+  elements.taskDeadline.value = task?.deadline?.slice(0, 10) || '';
+  elements.taskPriority.value = task?.priority || 'high';
+  elements.taskStatus.value = task?.status || 'open';
   openModal(elements.taskModal);
 }
 
 async function handleTaskSubmit(event) {
   event.preventDefault();
-  if (!state.user) return;
   const payload = {
-    user_id: state.user.id,
     title: elements.taskTitle.value.trim(),
-    due_date: elements.taskDeadline.value || null,
-    priority: Number(elements.taskPriority.value || 2),
-    done: elements.taskDone.checked,
+    description: elements.taskDescription.value.trim() || null,
+    deadline: elements.taskDeadline.value || null,
+    priority: elements.taskPriority.value,
+    status: elements.taskStatus.value,
   };
   if (!payload.title) {
-    createToast('Titel is verplicht', 'error');
+    createToast('Vul een titel in', 'error');
     return;
   }
+  const id = elements.taskId.value;
   try {
-    const id = elements.taskId.value;
     if (id) {
-      const { error } = await getSupabase()
-        .from('tasks')
-        .update(payload)
-        .eq('id', id)
-        .eq('user_id', state.user.id);
+      const { error } = await getSupabase().from('tasks').update(payload).eq('id', id);
       if (error) throw error;
-      createToast('Taak bijgewerkt', 'success');
+      createToast('Taak bijgewerkt');
     } else {
       const { error } = await getSupabase().from('tasks').insert(payload);
       if (error) throw error;
-      createToast('Taak aangemaakt', 'success');
+      createToast('Taak aangemaakt');
     }
     closeModal(elements.taskModal);
     await loadTasks();
@@ -1506,72 +1410,52 @@ async function handleTaskSubmit(event) {
 }
 
 function renderTasks() {
-  const statusFilter = elements.taskCompleteFilter?.value || 'all';
-  const priorityFilter = elements.taskPriorityFilter?.value || 'all';
-  const filtered = state.tasks.filter((task) => {
-    const statusOk = statusFilter === 'all' || (statusFilter === 'done' ? task.done : !task.done);
-    const priorityOk = priorityFilter === 'all' || String(task.priority) === priorityFilter;
-    return statusOk && priorityOk;
+  const statusFilter = elements.taskStatusFilter.value;
+  const priorityFilter = elements.taskPriorityFilter.value;
+  const tasks = state.tasks.filter((task) => {
+    const statusMatch = statusFilter === 'all' || task.status === statusFilter;
+    const priorityMatch = priorityFilter === 'all' || task.priority === priorityFilter;
+    return statusMatch && priorityMatch;
   });
-  elements.tasksEmpty?.classList.toggle('hidden', filtered.length > 0);
-  elements.taskTable.innerHTML = filtered
-    .map((task) => {
-      const statusText = task.done ? 'Afgerond' : 'Openstaand';
-      return `
-        <tr data-id="${task.id}">
-          <td>
-            <strong>${task.title}</strong>
-          </td>
-          <td>${task.due_date ? formatDate(task.due_date) : '—'}</td>
-          <td>${priorityLabel(task.priority)}</td>
-          <td>${statusText}</td>
-          <td class="table-actions">
-            <button type="button" class="ghost-button" data-action="toggle">${task.done ? 'Markeer open' : 'Markeer klaar'}</button>
-            <button type="button" class="ghost-button" data-action="edit">Bewerken</button>
-            <button type="button" class="ghost-button" data-action="delete">Verwijder</button>
-          </td>
-        </tr>`;
-    })
-    .join('');
+  elements.tasksEmpty?.classList.toggle('hidden', tasks.length > 0);
+  const template = elements.taskTemplate;
+  elements.taskBoard.innerHTML = '';
+  tasks
+    .sort((a, b) => new Date(a.deadline || 0) - new Date(b.deadline || 0))
+    .forEach((task) => {
+      const node = template.content.cloneNode(true);
+      const card = node.querySelector('.task-card');
+      card.dataset.id = task.id;
+      card.querySelector('h4').textContent = task.title;
+      card.querySelector('.description').textContent = task.description || 'Geen beschrijving';
+      const badge = card.querySelector('.badge');
+      badge.textContent = priorityLabel(task.priority);
+      badge.classList.add(`badge-${task.priority}`);
+      const meta = card.querySelector('.meta');
+      const deadline = task.deadline ? `⏰ ${formatDate(task.deadline)}` : 'Geen deadline';
+      meta.textContent = `${deadline} • ${statusLabel(task.status)}`;
+      if (task.status === 'done') {
+        card.classList.add('task-done');
+      }
+      elements.taskBoard.appendChild(node);
+    });
 }
 
-async function handleTaskTableClick(event) {
-  const row = event.target.closest('tr[data-id]');
-  if (!row) return;
-  const id = Number(row.dataset.id);
-  const task = state.tasks.find((item) => Number(item.id) === id);
+async function handleTaskBoardClick(event) {
+  const card = event.target.closest('.task-card');
+  if (!card) return;
+  const id = card.dataset.id;
+  const task = state.tasks.find((t) => t.id === id);
   if (!task) return;
   if (event.target.matches('[data-action="edit"]')) {
     openTaskModal(task);
-    return;
-  }
-  if (event.target.matches('[data-action="toggle"]')) {
-    try {
-      const { error } = await getSupabase()
-        .from('tasks')
-        .update({ done: !task.done })
-        .eq('id', id)
-        .eq('user_id', state.user.id);
-      if (error) throw error;
-      await loadTasks();
-      renderTasks();
-      renderDashboard();
-    } catch (error) {
-      console.error(error);
-      createToast('Bijwerken mislukt', 'error');
-    }
-    return;
   }
   if (event.target.matches('[data-action="delete"]')) {
-    if (!confirm('Verwijder deze taak?')) return;
+    if (!confirm('Taak verwijderen?')) return;
     try {
-      const { error } = await getSupabase()
-        .from('tasks')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', state.user.id);
+      const { error } = await getSupabase().from('tasks').delete().eq('id', id);
       if (error) throw error;
-      createToast('Taak verwijderd', 'success');
+      createToast('Taak verwijderd');
       await loadTasks();
       renderTasks();
       renderDashboard();
@@ -1580,192 +1464,222 @@ async function handleTaskTableClick(event) {
       createToast('Verwijderen mislukt', 'error');
     }
   }
+  if (event.target.matches('[data-action="complete"]')) {
+    updateTaskStatus(id, 'done');
+  }
+  if (event.target.matches('[data-action="progress"]')) {
+    updateTaskStatus(id, 'in_behandeling');
+  }
+}
+
+async function updateTaskStatus(id, status) {
+  try {
+    const { error } = await getSupabase().from('tasks').update({ status }).eq('id', id);
+    if (error) throw error;
+    await loadTasks();
+    renderTasks();
+    renderDashboard();
+  } catch (error) {
+    console.error(error);
+    createToast('Status bijwerken mislukt', 'error');
+  }
 }
 
 function renderDashboard() {
-  const periodDays = Number(elements.dashboardRange.value) || 30;
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(endDate.getDate() - periodDays);
-  const previousStart = new Date(startDate);
-  previousStart.setDate(previousStart.getDate() - periodDays);
-  const previousEnd = new Date(startDate);
+  if (!state.supabase) return;
+  const periodDays = Number(elements.dashboardPeriod.value || 30);
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - periodDays + 1);
+  const invoices = state.invoices.filter((invoice) => new Date(invoice.issue_date) >= start);
+  const timeEntries = state.timeEntries.filter((entry) => new Date(entry.start_time) >= start);
 
-  const currentInvoices = state.invoices.filter((invoice) => {
-    const date = invoice.issue_date ? new Date(invoice.issue_date) : null;
-    return date && date >= startDate && date <= endDate;
-  });
-  const previousInvoices = state.invoices.filter((invoice) => {
-    const date = invoice.issue_date ? new Date(invoice.issue_date) : null;
-    return date && date >= previousStart && date < previousEnd;
-  });
-  const revenueNow = sumBy(currentInvoices, (invoice) => calculateInvoiceTotal(invoice));
-  const revenuePrev = sumBy(previousInvoices, (invoice) => calculateInvoiceTotal(invoice));
-  elements.metricRevenue.textContent = formatCurrency(revenueNow);
-  elements.metricRevenueRange.textContent = `Laatste ${periodDays} dagen`;
-  elements.metricRevenueDelta.textContent = formatDelta(revenueNow, revenuePrev);
-
-  const currentEntries = state.timeEntries.filter((entry) => {
-    const date = new Date(entry.started_at);
-    return date >= startDate && date <= endDate;
-  });
-  const previousEntries = state.timeEntries.filter((entry) => {
-    const date = new Date(entry.started_at);
-    return date >= previousStart && date < previousEnd;
-  });
-  const hoursNow = sumBy(currentEntries, (entry) => entry.seconds || 0);
-  const hoursPrev = sumBy(previousEntries, (entry) => entry.seconds || 0);
-  elements.metricHours.textContent = formatDuration(hoursNow);
-  elements.metricHoursRange.textContent = `Laatste ${periodDays} dagen`;
-  elements.metricHoursDelta.textContent = formatDelta(hoursNow, hoursPrev);
-
-  const openInvoices = state.invoices.filter((invoice) => !invoice.paid);
-  elements.metricOpenInvoices.textContent = formatCurrency(
-    sumBy(openInvoices, (invoice) => calculateInvoiceTotal(invoice))
+  const revenue = sumBy(invoices, (invoice) => invoice.total_amount || 0);
+  const hours = sumBy(timeEntries, (entry) => entry.duration_seconds || 0) / 3600;
+  const previousStart = new Date(start);
+  previousStart.setDate(start.getDate() - periodDays);
+  const previousInvoices = state.invoices.filter(
+    (invoice) => new Date(invoice.issue_date) >= previousStart && new Date(invoice.issue_date) < start
   );
-  elements.metricOpenCount.textContent = `${openInvoices.length} facturen`;
+  const previousTime = state.timeEntries.filter(
+    (entry) => new Date(entry.start_time) >= previousStart && new Date(entry.start_time) < start
+  );
+  const previousRevenue = sumBy(previousInvoices, (invoice) => invoice.total_amount || 0);
+  const previousHours = sumBy(previousTime, (entry) => entry.duration_seconds || 0) / 3600;
+  elements.totalRevenue.textContent = formatCurrency(revenue);
+  elements.totalHours.textContent = `${hours.toFixed(1)} uur`;
+  elements.revenueTrend.textContent = formatTrend(revenue, previousRevenue);
+  elements.hoursTrend.textContent = formatTrend(hours, previousHours, 'u');
+  elements.revenuePeriodLabel.textContent = `Laatste ${periodDays} dagen`;
+  elements.hoursPeriodLabel.textContent = `Laatste ${periodDays} dagen`;
 
-  const focusTasks = state.tasks.filter((task) => task.priority === 1 && !task.done);
-  elements.metricPriority.textContent = `${focusTasks.length} taken`;
+  const openInvoices = state.invoices.filter((invoice) => invoice.status !== 'betaald');
+  const outstanding = sumBy(openInvoices, (invoice) => invoice.total_amount || 0);
+  elements.openInvoices.textContent = formatCurrency(outstanding);
+  elements.openInvoicesCount.textContent = `${openInvoices.length} facturen`;
 
-  const upcomingEvents = state.planning
-    .filter((event) => {
-      const date = new Date(event.starts_at);
-      return date >= new Date() && date <= addDays(new Date(), 7);
-    })
-    .slice(0, 5);
-  elements.dashboardEvents.innerHTML = upcomingEvents
-    .map(
-      (event) => `
-        <li>
-          <strong>${event.title}</strong>
-          <span>${formatDateTime(event.starts_at)}</span>
-          ${event.location ? `<span class="muted">${event.location}</span>` : ''}
-        </li>`
-    )
-    .join('');
-
-  const importantTasks = focusTasks
-    .filter((task) => !task.due_date || new Date(task.due_date) <= endOfWeek(new Date()))
-    .slice(0, 5);
-  elements.dashboardTasks.innerHTML = importantTasks
-    .map(
-      (task) => `
-        <li>
-          <strong>${task.title}</strong>
-          <span class="muted">${task.due_date ? formatDate(task.due_date) : 'Geen deadline'}</span>
-        </li>`
-    )
-    .join('');
+  const weekStart = getWeekStart(new Date());
+  const weekEnd = getWeekEnd(new Date());
+  const highPriority = state.tasks.filter(
+    (task) => task.priority === 'high' && task.status !== 'done' && (!task.deadline || new Date(task.deadline) <= weekEnd)
+  );
+  elements.priorityTasks.textContent = `${highPriority.length} taken`;
 
   renderChart();
+  renderUpcomingEvents();
+  renderCriticalTasks();
 }
 
-function formatDelta(current, previous) {
-  if (!previous) return '—';
-  const delta = ((current - previous) / Math.abs(previous)) * 100;
-  const sign = delta > 0 ? '+' : '';
-  return `${sign}${delta.toFixed(1)}%`;
-}
-
-function toggleChartMode() {
-  state.chartMode = state.chartMode === 'revenue' ? 'hours' : 'revenue';
-  elements.toggleChart.textContent = state.chartMode === 'revenue' ? 'Toon uren' : 'Toon omzet';
-  renderChart();
+function formatTrend(current, previous, suffix = '') {
+  if (!previous) {
+    return `${suffix ? `${suffix}` : ''}`;
+  }
+  const change = ((current - previous) / (previous || 1)) * 100;
+  const sign = change >= 0 ? '+' : '';
+  return `${sign}${change.toFixed(1)}%`;
 }
 
 function renderChart() {
-  if (!elements.chartCanvas) return;
+  if (!elements.performanceChart) return;
+  const ctx = elements.performanceChart.getContext('2d');
+  const chartData = state.chartMode === 'revenue' ? buildRevenueDataset() : buildHoursDataset();
+  if (state.chart) {
+    state.chart.data.labels = chartData.labels;
+    state.chart.data.datasets = chartData.datasets;
+    state.chart.update();
+    return;
+  }
+  state.chart = new Chart(ctx, {
+    type: 'line',
+    data: chartData,
+    options: {
+      responsive: true,
+      tension: 0.35,
+      plugins: {
+        legend: {
+          labels: { color: '#f8fafc' },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#cbd5f5' },
+          grid: { color: 'rgba(255,255,255,0.08)' },
+        },
+        y: {
+          ticks: { color: '#cbd5f5' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+      },
+    },
+  });
+}
+
+function buildRevenueDataset() {
   const months = Array.from({ length: 6 }, (_, index) => {
     const date = new Date();
     date.setMonth(date.getMonth() - (5 - index));
-    date.setDate(1);
-    return date;
+    return new Date(date.getFullYear(), date.getMonth(), 1);
   });
   const labels = months.map((date) => date.toLocaleDateString('nl-NL', { month: 'short' }));
-  const revenueData = months.map((date) => {
-    const start = startOfMonth(date);
-    const end = endOfMonth(date);
+  const values = months.map((month) => {
+    const start = new Date(month.getFullYear(), month.getMonth(), 1);
+    const end = new Date(month.getFullYear(), month.getMonth() + 1, 0, 23, 59, 59);
     return sumBy(state.invoices, (invoice) => {
-      const issue = invoice.issue_date ? new Date(invoice.issue_date) : null;
-      return issue && issue >= start && issue <= end ? calculateInvoiceTotal(invoice) : 0;
+      const issue = new Date(invoice.issue_date);
+      return issue >= start && issue <= end ? invoice.total_amount || 0 : 0;
     });
   });
-  const hoursData = months.map((date) => {
-    const start = startOfMonth(date);
-    const end = endOfMonth(date);
-    return sumBy(state.timeEntries, (entry) => {
-      const logged = new Date(entry.started_at);
-      return logged >= start && logged <= end ? (entry.seconds || 0) / 3600 : 0;
-    });
+  return {
+    labels,
+    datasets: [
+      {
+        label: 'Omzet per maand',
+        data: values,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.15)',
+        fill: true,
+      },
+    ],
+  };
+}
+
+function buildHoursDataset() {
+  const weeks = Array.from({ length: 6 }, (_, index) => {
+    const start = getWeekStart(new Date());
+    start.setDate(start.getDate() - (5 - index) * 7);
+    return start;
   });
-  const dataset = state.chartMode === 'revenue' ? revenueData : hoursData;
-  const label = state.chartMode === 'revenue' ? 'Omzet (EUR)' : 'Uren';
-  const color = state.chartMode === 'revenue' ? '#38bdf8' : '#a855f7';
-  if (state.chart) {
-    state.chart.data.labels = labels;
-    state.chart.data.datasets[0].data = dataset;
-    state.chart.data.datasets[0].label = label;
-    state.chart.data.datasets[0].backgroundColor = color;
-    state.chart.data.datasets[0].borderColor = color;
-    state.chart.update();
-  } else {
-    state.chart = new Chart(elements.chartCanvas, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label,
-            data: dataset,
-            backgroundColor: color,
-            borderColor: color,
-            borderRadius: 8,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: {
-            ticks: {
-              callback: (value) => (state.chartMode === 'revenue' ? formatCurrency(value) : `${value}u`),
-            },
-          },
-        },
-      },
+  const labels = weeks.map((week) => `Week ${weekNumber(week)}`);
+  const values = weeks.map((week) => {
+    const start = getWeekStart(week);
+    const end = getWeekEnd(week);
+    const seconds = sumBy(state.timeEntries, (entry) => {
+      const date = new Date(entry.start_time);
+      return date >= start && date <= end ? entry.duration_seconds || 0 : 0;
     });
-  }
+    return Number((seconds / 3600).toFixed(2));
+  });
+  return {
+    labels,
+    datasets: [
+      {
+        label: 'Gewerkte uren per week',
+        data: values,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56,189,248,0.2)',
+        fill: true,
+      },
+    ],
+  };
 }
 
-function startOfMonth(date) {
-  const start = new Date(date);
-  start.setDate(1);
-  start.setHours(0, 0, 0, 0);
-  return start;
+function weekNumber(date) {
+  const target = new Date(date.valueOf());
+  const dayNr = (target.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const week =
+    1 + Math.round(((target - firstThursday) / 86400000 - 3 + ((firstThursday.getDay() + 6) % 7)) / 7);
+  return String(week).padStart(2, '0');
 }
 
-function endOfMonth(date) {
-  const end = new Date(date);
-  end.setMonth(end.getMonth() + 1);
-  end.setDate(0);
-  end.setHours(23, 59, 59, 999);
-  return end;
+function renderUpcomingEvents() {
+  const start = getWeekStart(new Date());
+  const end = getWeekEnd(new Date());
+  const events = state.planningEntries
+    .filter((entry) => {
+      const date = new Date(entry.start_time);
+      return date >= start && date <= end;
+    })
+    .slice(0, 5);
+  elements.upcomingEvents.innerHTML = events.length
+    ? events
+        .map(
+          (event) => `
+            <li>
+              <strong>${event.title}</strong>
+              <span>${formatDateTime(event.start_time)}</span>
+            </li>`
+        )
+        .join('')
+    : '<li>Geen afspraken gepland</li>';
 }
 
-function openModal(modal) {
-  if (!modal) return;
-  modal.classList.remove('hidden');
-  elements.backdrop?.classList.remove('hidden');
+function renderCriticalTasks() {
+  const tasks = state.tasks
+    .filter((task) => task.priority === 'high' && task.status !== 'done')
+    .sort((a, b) => new Date(a.deadline || 0) - new Date(b.deadline || 0))
+    .slice(0, 5);
+  elements.criticalTasks.innerHTML = tasks.length
+    ? tasks
+        .map(
+          (task) => `
+            <li>
+              <strong>${task.title}</strong>
+              <span>${task.deadline ? formatDate(task.deadline) : 'Geen deadline'}</span>
+            </li>`
+        )
+        .join('')
+    : '<li>Geen urgente taken</li>';
 }
 
-function closeModal(modal) {
-  if (!modal) return;
-  modal.classList.add('hidden');
-  const anyOpen = Array.from(document.querySelectorAll('.modal, .drawer')).some(
-    (item) => !item.classList.contains('hidden')
-  );
-  if (!anyOpen) {
-    elements.backdrop?.classList.add('hidden');
-  }
-}
