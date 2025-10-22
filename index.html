@@ -73,3 +73,449 @@
               <header>
                 <span class="metric-label">Gewerkte uren</span>
                 <span class="metric-trend" id="hours-trend">—</span>
+              </header>
+              <div class="metric-value" id="total-hours">0:00</div>
+              <footer><span id="hours-period-label">Laatste 30 dagen</span></footer>
+            </article>
+            <article class="metric-card">
+              <header><span class="metric-label">Openstaande facturen</span></header>
+              <div class="metric-value" id="open-invoices">€ 0,00</div>
+              <footer><span id="open-invoices-count">0 facturen</span></footer>
+            </article>
+            <article class="metric-card">
+              <header><span class="metric-label">Focus</span></header>
+              <div class="metric-value" id="priority-tasks">0 taken</div>
+              <footer>Met hoge prioriteit voor deze week</footer>
+            </article>
+          </div>
+
+          <div class="dashboard-panels">
+            <section class="panel">
+              <header class="panel-header">
+                <h3>Omzet en uren</h3>
+                <div class="panel-actions"><button class="ghost-button" id="toggle-chart-view">Wissel grafiek</button></div>
+              </header>
+              <canvas id="performance-chart" height="220" aria-label="Grafiek omzet en uren"></canvas>
+            </section>
+            <section class="panel">
+              <header class="panel-header"><h3>Deze week</h3></header>
+              <div class="split-panel">
+                <div><h4>Planning</h4><ul id="upcoming-events" class="list"></ul></div>
+                <div><h4>Belangrijkste taken</h4><ul id="critical-tasks" class="list"></ul></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- Klanten -->
+        <section id="clients" class="view" aria-labelledby="clients-title">
+          <header class="view-header">
+            <div>
+              <h2 id="clients-title">Klantenbeheer</h2>
+              <p class="subtitle">Beheer klantgegevens, tarieven en contactinformatie</p>
+            </div>
+            <div class="view-toolbar">
+              <input id="client-search" type="search" placeholder="Zoek klant" />
+              <button id="add-client" class="primary-button">Nieuwe klant</button>
+            </div>
+          </header>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Naam</th>
+                  <th>Contact</th>
+                  <th>Uurtarief</th>
+                  <th>Laatst gewerkt</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="clients-table"></tbody>
+            </table>
+            <div class="empty-state hidden" id="clients-empty">
+              <h3>Voeg je eerste klant toe</h3>
+              <p>Met klanten kun je uren schrijven, plannen en factureren.</p>
+              <button id="empty-add-client" class="primary-button">Klant toevoegen</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Urenregistratie -->
+        <section id="time-tracking" class="view" aria-labelledby="time-title">
+          <header class="view-header">
+            <div>
+              <h2 id="time-title">Urenregistratie</h2>
+              <p class="subtitle">Registreer je uren tot op de seconde en houd overzicht</p>
+            </div>
+            <div class="view-toolbar">
+              <label class="inline-filter"><span>Periode</span><input type="week" id="time-week" /></label>
+            </div>
+          </header>
+
+          <section class="panel">
+            <header class="panel-header"><h3>Live timer</h3></header>
+            <div class="timer">
+              <div class="timer-display" id="timer-display">00:00:00</div>
+              <form id="timer-form" class="timer-form">
+                <label><span>Klant</span><select id="timer-client"></select></label>
+                <label><span>Omschrijving</span><input type="text" id="timer-description" placeholder="Bijv. ontwerp homepage" /></label>
+                <div class="timer-actions">
+                  <button type="button" id="start-timer" class="primary-button">Start</button>
+                  <button type="button" id="stop-timer" class="primary-button" disabled>Stop</button>
+                  <button type="button" id="reset-timer" class="ghost-button" disabled>Reset</button>
+                </div>
+              </form>
+              <div class="timer-summary hidden" id="timer-summary"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-header"><h3>Handmatige boeking</h3></header>
+            <form id="manual-time-form" class="form-grid">
+              <label><span>Klant</span><select id="manual-client"></select></label>
+              <label><span>Starttijd</span><input type="datetime-local" id="manual-start" required /></label>
+              <label><span>Eindtijd</span><input type="datetime-local" id="manual-end" required /></label>
+              <label><span>Omschrijving</span><input type="text" id="manual-description" placeholder="Wat heb je gedaan?" /></label>
+              <label><span>Billable</span>
+                <select id="manual-billable"><option value="true">Ja</option><option value="false">Nee</option></select>
+              </label>
+              <label><span>Uurtarief (optioneel)</span><input type="number" id="manual-rate" step="0.01" min="0" /></label>
+              <div class="form-actions full-row"><button type="submit" class="primary-button">Boeking opslaan</button></div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Uren deze week</h3>
+              <div class="panel-actions"><button id="export-week-csv" class="ghost-button">Exporteer CSV</button></div>
+            </header>
+            <table>
+              <thead>
+                <tr>
+                  <th>Datum</th><th>Klant</th><th>Omschrijving</th><th>Duur</th><th>Billable</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="time-entries"></tbody>
+            </table>
+            <div class="empty-state hidden" id="time-empty">
+              <h3>Nog geen uren</h3><p>Start de timer of voeg handmatig een boeking toe.</p>
+            </div>
+          </section>
+        </section>
+
+        <!-- Planning -->
+        <section id="planning" class="view" aria-labelledby="planning-title">
+          <header class="view-header">
+            <div>
+              <h2 id="planning-title">Weekplanning</h2>
+              <p class="subtitle">Plan je werkweek en synchroniseer met je agenda</p>
+            </div>
+            <div class="view-toolbar">
+              <button id="previous-week" class="ghost-button">Vorige week</button>
+              <div id="current-week-label" class="week-label"></div>
+              <button id="next-week" class="ghost-button">Volgende week</button>
+            </div>
+          </header>
+
+          <section class="panel">
+            <header class="panel-header"><h3>Nieuwe planning</h3></header>
+            <form id="planning-form" class="form-grid">
+              <label><span>Titel</span><input type="text" id="planning-title-input" required /></label>
+              <label><span>Start</span><input type="datetime-local" id="planning-start" required /></label>
+              <label><span>Einde</span><input type="datetime-local" id="planning-end" required /></label>
+              <label><span>Locatie</span><input type="text" id="planning-location" placeholder="Online / kantoor" /></label>
+              <label><span>Notities of link</span><input type="url" id="planning-link" placeholder="https://meeting-link" /></label>
+              <label class="full-row"><span>Beschrijving</span><textarea id="planning-notes" rows="2"></textarea></label>
+              <div class="form-actions full-row">
+                <button type="submit" class="primary-button">Planning toevoegen</button>
+                <button type="button" id="export-week-ics" class="ghost-button">Exporteer naar agenda (ICS)</button>
+                <label class="ghost-button file-input"><input type="file" id="import-ics" accept=".ics,text/calendar" hidden /><span>Importeer agenda</span></label>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <header class="panel-header"><h3>Weekoverzicht</h3></header>
+            <div class="week-grid" id="week-grid" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <!-- Facturatie -->
+        <section id="invoicing" class="view" aria-labelledby="invoicing-title">
+          <header class="view-header">
+            <div>
+              <h2 id="invoicing-title">Facturatie</h2>
+              <p class="subtitle">Bouw facturen vanuit je urenregistratie, genereer een PDF en verstuur per mail</p>
+            </div>
+            <div class="view-toolbar"><button id="new-invoice" class="primary-button">Nieuwe factuur</button></div>
+          </header>
+
+          <section class="panel">
+            <header class="panel-header">
+              <h3>Facturen</h3>
+              <div class="panel-actions">
+                <label class="inline-filter"><span>Status</span>
+                  <select id="invoice-status-filter">
+                    <option value="all">Alle</option><option value="concept">Concept</option>
+                    <option value="verzonden">Verzonden</option><option value="betaald">Betaald</option>
+                    <option value="vervallen">Vervallen</option>
+                  </select>
+                </label>
+              </div>
+            </header>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr><th>Factuurnummer</th><th>Klant</th><th>Verstuurd</th><th>Vervaldatum</th><th>Bedrag</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody id="invoice-table"></tbody>
+              </table>
+              <div class="empty-state hidden" id="invoice-empty">
+                <h3>Geen facturen gevonden</h3>
+                <p>Maak je eerste factuur aan vanuit urenregistraties of handmatige regels.</p>
+                <button class="primary-button" id="empty-new-invoice">Nieuwe factuur</button>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <!-- Taken -->
+        <section id="tasks" class="view" aria-labelledby="tasks-title">
+          <header class="view-header">
+            <div>
+              <h2 id="tasks-title">Takenlijst</h2>
+              <p class="subtitle">Prioriteer je acties met deadlines en statusupdates</p>
+            </div>
+            <div class="view-toolbar">
+              <label class="inline-filter"><span>Status</span>
+                <select id="task-status-filter"><option value="open">Open</option><option value="in_behandeling">In behandeling</option><option value="done">Afgerond</option><option value="all">Alles</option></select>
+              </label>
+              <label class="inline-filter"><span>Prioriteit</span>
+                <select id="task-priority-filter"><option value="all">Alle</option><option value="high">Hoog</option><option value="medium">Middel</option><option value="low">Laag</option></select>
+              </label>
+              <button id="add-task" class="primary-button">Nieuwe taak</button>
+            </div>
+          </header>
+          <div class="task-board" id="task-board"></div>
+          <div class="empty-state hidden" id="tasks-empty">
+            <h3>Je bent bij!</h3><p>Voeg een taak toe om niets te vergeten.</p>
+            <button class="primary-button" id="empty-add-task">Taak toevoegen</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-backdrop" class="modal-backdrop hidden"></div>
+
+    <div id="supabase-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <form id="supabase-form" class="modal-content">
+        <header>
+          <h3>Verbind met Supabase</h3>
+          <p>Bewaar je gegevens veilig in Supabase. Vul je projectgegevens in.</p>
+        </header>
+        <label><span>Supabase URL</span>
+          <input type="url" id="supabase-url" placeholder="https://xyzcompany.supabase.co" required />
+        </label>
+        <label><span>Anon public key</span>
+          <input type="text" id="supabase-key" placeholder="public-anon-key" required />
+        </label>
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" id="cancel-supabase">Annuleer</button>
+          <button type="submit" class="primary-button">Opslaan</button>
+        </footer>
+      </form>
+    </div>
+
+    <div id="client-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <form id="client-form" class="modal-content">
+        <header><h3 id="client-modal-title">Nieuwe klant</h3></header>
+        <input type="hidden" id="client-id" />
+        <label><span>Bedrijfsnaam</span><input type="text" id="client-name" required /></label>
+        <label><span>Contactpersoon</span><input type="text" id="client-contact" placeholder="Naam contactpersoon" /></label>
+        <label><span>Email</span><input type="email" id="client-email" placeholder="naam@bedrijf.nl" /></label>
+        <label><span>Telefoon</span><input type="tel" id="client-phone" placeholder="06 12345678" /></label>
+        <label><span>Adres</span><textarea id="client-address" rows="2" placeholder="Adres voor facturen"></textarea></label>
+        <label><span>Standaard uurtarief (€)</span><input type="number" id="client-rate" step="0.01" min="0" /></label>
+        <label class="full-row"><span>Notities</span><textarea id="client-notes" rows="3"></textarea></label>
+        <footer class="modal-actions">
+          <button type="button" class="ghost-button" id="cancel-client">Annuleer</button>
+          <button type="submit" class="primary-button">Opslaan</button>
+        </footer>
+      </form>
+    </div>
+
+    <!-- overige modals (invoice, task, drawer, email) blijven ongewijzigd -->
+    <!-- ... -->
+
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Templates blijven ongewijzigd -->
+    <template id="task-card-template">...</template>
+    <template id="line-item-template">...</template>
+
+    <!-- ========= App Logic (inline minimal werkend) ========= -->
+    <script>
+      // ---------- Supabase init ----------
+      let supabase = null;
+
+      function getSavedConfig() {
+        try { return JSON.parse(localStorage.getItem('supabaseConfig') || '{}'); }
+        catch { return {}; }
+      }
+
+      function setConnectionIndicator(ok, text) {
+        const el = document.getElementById('connection-indicator');
+        el.textContent = text || (ok ? 'Verbonden' : 'Niet verbonden');
+        el.classList.toggle('status-badge--success', !!ok);
+        el.classList.toggle('status-badge--danger', !ok);
+      }
+
+      function initSupabaseClient() {
+        const cfg = getSavedConfig();
+        if (cfg.url && cfg.key) {
+          supabase = window.supabase.createClient(cfg.url, cfg.key);
+          setConnectionIndicator(true, 'Verbonden');
+          bindAuthListener();
+          // probeer sessie op te halen
+          supabase.auth.getSession().then(({data:{session}}) => {
+            if (!session) requestLogin();
+            else { loadClients(); }
+          });
+        } else {
+          setConnectionIndicator(false, 'Niet verbonden');
+        }
+      }
+
+      function bindAuthListener() {
+        supabase?.auth.onAuthStateChange((_e, session) => {
+          if (session) {
+            setConnectionIndicator(true, 'Verbonden');
+            loadClients();
+          }
+        });
+      }
+
+      async function requestLogin() {
+        const email = prompt('Log in met je e-mail voor MeesterCRM (magic link):');
+        if (!email) return;
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: window.location.href }
+        });
+        if (error) alert(error.message);
+        else alert('Check je mailbox en kom terug na de link.');
+      }
+
+      // ---------- Modal open/close ----------
+      const backdrop = document.getElementById('modal-backdrop');
+      const supabaseModal = document.getElementById('supabase-modal');
+      const clientModal = document.getElementById('client-modal');
+
+      function openModal(m) { backdrop.classList.remove('hidden'); m.classList.remove('hidden'); }
+      function closeModal(m) { backdrop.classList.add('hidden'); m.classList.add('hidden'); }
+
+      document.getElementById('open-supabase-settings').addEventListener('click', () => {
+        // Prefill als er config is
+        const cfg = getSavedConfig();
+        if (cfg.url) document.getElementById('supabase-url').value = cfg.url;
+        if (cfg.key) document.getElementById('supabase-key').value = cfg.key;
+        openModal(supabaseModal);
+      });
+      document.getElementById('cancel-supabase').addEventListener('click', () => closeModal(supabaseModal));
+
+      document.getElementById('add-client').addEventListener('click', () => {
+        document.getElementById('client-form').reset();
+        document.getElementById('client-modal-title').textContent = 'Nieuwe klant';
+        openModal(clientModal);
+      });
+      document.getElementById('empty-add-client').addEventListener('click', () => {
+        document.getElementById('client-form').reset();
+        document.getElementById('client-modal-title').textContent = 'Nieuwe klant';
+        openModal(clientModal);
+      });
+      document.getElementById('cancel-client').addEventListener('click', () => closeModal(clientModal));
+
+      // ---------- Supabase-form opslaan ----------
+      document.getElementById('supabase-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const url = document.getElementById('supabase-url').value.trim();
+        const key = document.getElementById('supabase-key').value.trim();
+        localStorage.setItem('supabaseConfig', JSON.stringify({ url, key }));
+        closeModal(supabaseModal);
+        initSupabaseClient();
+      });
+
+      // ---------- Klanten opslaan / laden ----------
+      async function saveClient(payload) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { await requestLogin(); return; }
+
+        const { error } = await supabase.from('clients').insert({
+          user_id: user.id,
+          name: payload.name,
+          email: payload.email || null,
+          phone: payload.phone || null,
+          hourly_rate: payload.rate ? Number(payload.rate) : 0,
+          notes: payload.notes || null
+        });
+        if (error) { alert('Opslaan mislukt: ' + error.message); return; }
+
+        closeModal(clientModal);
+        await loadClients();
+      }
+
+      document.getElementById('client-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('client-name').value.trim();
+        if (!name) return;
+        const payload = {
+          name,
+          email: document.getElementById('client-email').value.trim(),
+          phone: document.getElementById('client-phone').value.trim(),
+          rate:  document.getElementById('client-rate').value,
+          notes: document.getElementById('client-notes').value
+        };
+        await saveClient(payload);
+      });
+
+      async function loadClients() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase
+          .from('clients')
+          .select('id,name,email,phone,hourly_rate,created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) { console.error(error); return; }
+
+        const tbody = document.getElementById('clients-table');
+        const empty = document.getElementById('clients-empty');
+
+        if (!data || data.length === 0) {
+          tbody.innerHTML = '';
+          empty.classList.remove('hidden');
+          return;
+        }
+        empty.classList.add('hidden');
+        tbody.innerHTML = data.map(c => `
+          <tr>
+            <td>${c.name ?? ''}</td>
+            <td>${[c.email, c.phone].filter(Boolean).join('<br>')}</td>
+            <td>€ ${Number(c.hourly_rate ?? 0).toFixed(2)}</td>
+            <td>—</td>
+            <td><button class="ghost-button" data-id="${c.id}">Wijzig</button></td>
+          </tr>
+        `).join('');
+      }
+
+      // Init app
+      initSupabaseClient();
+
+      // Optioneel: “Gegevens verversen” knop laadt klanten (en straks ook uren, etc.)
+      document.getElementById('refresh-data').addEventListener('click', () => { if (supabase) loadClients(); });
+    </script>
+  </body>
+</html>
